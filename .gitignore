@@ -1,0 +1,172 @@
+# =============================================
+# ReserveQ .gitignore
+# Stack: Java / Spring Boot / Terraform / Docker
+# IDE: IntelliJ IDEA + VS Code
+# =============================================
+
+
+# ==================
+# Java / Spring Boot
+# ==================
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+
+# Build output
+target/
+build/
+out/
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+
+# Spring Boot
+*.original
+spring-shell.log
+HELP.md
+
+# 로컬 환경 설정 (절대 커밋 금지)
+application-local.yml
+application-local.properties
+application-secret.yml
+application-secret.properties
+
+
+# ==================
+# Terraform
+# ==================
+# 로컬 상태 파일 (S3 backend 사용 → 로컬 불필요)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# 플랜 파일
+*.tfplan
+tfplan
+
+# 자동 생성 디렉토리
+.terraform/
+.terraform.lock.hcl
+
+# 변수 파일 (credentials 포함 가능)
+*.tfvars
+*.tfvars.json
+
+# 단, 예시 파일은 커밋
+!terraform.tfvars.example
+!*.tfvars.example
+
+# override 파일
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# crash log
+crash.log
+crash.*.log
+
+
+# ==================
+# Docker
+# ==================
+.dockerenv
+docker-compose.override.yml
+
+
+# ==================
+# IntelliJ IDEA
+# ==================
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# 단, run configuration은 팀 공유 가능하면 아래 주석 해제
+# !.idea/runConfigurations/
+
+
+# ==================
+# VS Code
+# ==================
+.vscode/
+*.code-workspace
+
+
+# ==================
+# OS
+# ==================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+
+# ==================
+# 보안 / 인증 정보 (절대 커밋 금지)
+# ==================
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+*.env
+.env
+.env.*
+!.env.example
+
+# AWS credentials
+.aws/
+credentials
+
+
+# ==================
+# 로그
+# ==================
+logs/
+*.log
+log/
+
+
+# ==================
+# 기타
+# ==================
+# 테스트 커버리지 리포트
+coverage/
+*.lcov
+
+# Node (프론트엔드 있을 경우 대비)
+node_modules/
+npm-debug.log*
+
+# Helm chart 임시 파일
+*.tgz
+charts/
