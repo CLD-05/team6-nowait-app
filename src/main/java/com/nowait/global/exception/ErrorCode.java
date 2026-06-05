@@ -56,6 +56,5 @@ public enum ErrorCode {
         this.code = code;
         this.message = message;
     }
-	
 
 }
