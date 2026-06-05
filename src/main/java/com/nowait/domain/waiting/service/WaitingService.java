@@ -2,6 +2,7 @@ package com.nowait.domain.waiting.service;
 
 import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
 import com.nowait.domain.waiting.dto.WaitingRegisterRequest;
+import com.nowait.domain.waiting.repository.WaitingRedisRepository;
 import com.nowait.domain.waiting.dto.WaitingResponse;
 import com.nowait.domain.waiting.entity.Waiting;
 import com.nowait.domain.waiting.entity.WaitingSession;
@@ -30,6 +31,7 @@ public class WaitingService {
   private final WaitingRepository waitingRepository;
   private final WaitingSessionService waitingSessionService;
   private final RestaurantOwnerRepository restaurantOwnerRepository;
+  private final WaitingRedisRepository waitingRedisRepository;
 
   @Value("${waiting.call-timeout-minutes:10}")
   private long callTimeoutMinutes;
@@ -52,16 +54,26 @@ public class WaitingService {
       throw new BusinessException(ErrorCode.DUPLICATE_WAITING);
     }
 
-    int nextNumber = waitingRepository.findMaxWaitingNumber(session.getId()) + 1;
+    // Redis 로 카운트 사전 확인 + 증가 (atomic)
+    int newCount = waitingRedisRepository.incrementCount(session.getId());
+    if (newCount > session.getMaxWaitingCount()) {
+      // 한도 초과 → 롤백 (감소)
+      waitingRedisRepository.decrementCount(session.getId());
+      throw new BusinessException(ErrorCode.WAITING_COUNT_EXCEEDED);
+    }
 
+    // Redis 로 대기번호 atomic 채번
+    int nextNumber = waitingRedisRepository.incrementAndGetNextNumber(session.getId());
+
+    // DB 반영 (엔티티의 currentCount 동기화)
     session.increaseCurrentCount();
     Waiting waiting = Waiting.register(
         loginUserId, restaurantId, session.getId(),
         nextNumber, request.partySize(), LocalDateTime.now());
     waitingRepository.save(waiting);
 
-    log.info("Waiting registered. waitingId={}, sessionId={}, number={}, userId={}",
-        waiting.getId(), session.getId(), nextNumber, loginUserId);
+    log.info("Waiting registered. waitingId={}, sessionId={}, number={}, userId={}, redisCount={}",
+        waiting.getId(), session.getId(), nextNumber, loginUserId, newCount);
 
     return WaitingResponse.of(waiting, 0L);
   }
@@ -150,6 +162,7 @@ public class WaitingService {
     WaitingSession session = waitingSessionService.findSessionOrThrow(waiting.getSessionId());
     waiting.enter(LocalDateTime.now());
     session.decreaseCurrentCount();
+    waitingRedisRepository.decrementCount(session.getId()); // Redis 카운트도 감소
 
     log.info("Waiting entered. waitingId={}", waitingId);
     return WaitingResponse.from(waiting);
@@ -180,6 +193,7 @@ public class WaitingService {
     WaitingSession session = waitingSessionService.findSessionOrThrow(waiting.getSessionId());
     waiting.cancel(LocalDateTime.now());
     session.decreaseCurrentCount();
+    waitingRedisRepository.decrementCount(session.getId()); // Redis 카운트도 감소
   }
 
   private Waiting findWaitingOrThrow(Long waitingId) {
