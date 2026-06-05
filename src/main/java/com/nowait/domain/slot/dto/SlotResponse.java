@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-package com.nowait.domain.slot.dto;
-
-public class SlotResponse {
-
-}
-=======
 // domain/slot/dto/SlotResponse.java
 package com.nowait.domain.slot.dto;
 
@@ -58,4 +51,3 @@ public class SlotResponse {
         }
     }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

@@ -1,10 +1,5 @@
 package com.nowait.domain.auth.dto;
 
-<<<<<<< HEAD
-public class LoginRequest {
-
-}
-=======
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
@@ -14,4 +9,3 @@ public record LoginRequest(
 
     @NotBlank(message = "비밀번호를 입력해주세요!") String password) {
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

@@ -1,10 +1,5 @@
 package com.nowait.global.security.principal;
 
-<<<<<<< HEAD
-public class CustomUserDetailsService {
-
-}
-=======
 import com.nowait.domain.user.entity.User;
 import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.exception.BusinessException;
@@ -34,4 +29,3 @@ public class CustomUserDetailsService implements UserDetailsService {
         );
     }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

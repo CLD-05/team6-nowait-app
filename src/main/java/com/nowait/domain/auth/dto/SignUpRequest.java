@@ -1,10 +1,5 @@
 package com.nowait.domain.auth.dto;
 
-<<<<<<< HEAD
-public class SignUpRequest {
-
-}
-=======
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -17,4 +12,3 @@ public record SignUpRequest(
 
     @NotBlank(message = "이름을 입력해주세요.") @Size(max = 50, message = "이름은 50자 이하여야 합니다.") String name) {
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

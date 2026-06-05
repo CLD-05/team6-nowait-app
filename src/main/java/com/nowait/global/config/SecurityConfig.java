@@ -1,10 +1,5 @@
 package com.nowait.global.config;
 
-<<<<<<< HEAD
-public class SecurityConfig {
-
-}
-=======
 import com.nowait.global.security.jwt.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -88,4 +83,3 @@ public class SecurityConfig {
         return config.getAuthenticationManager();
     }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

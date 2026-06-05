@@ -1,10 +1,5 @@
 package com.nowait.global.security.jwt;
 
-<<<<<<< HEAD
-public class JwtTokenProvider {
-
-}
-=======
 import com.nowait.domain.user.type.UserRole;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -87,4 +82,3 @@ public class JwtTokenProvider {
         .getBody();
   }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

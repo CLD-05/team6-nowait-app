@@ -1,10 +1,5 @@
 package com.nowait.domain.reservation.repository;
 
-<<<<<<< HEAD
-public interface ReservationRepository {
-
-}
-=======
 import com.nowait.domain.reservation.entity.Reservation;
 import com.nowait.domain.reservation.type.ReservationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -23,4 +18,3 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     // 예약 상세 조회 (연관 엔티티 함께)
     Optional<Reservation> findWithDetailsById(Long id);
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

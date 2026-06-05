@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-package com.nowait.domain.slot.entity;
-
-public class Slot {
-
-}
-=======
 // domain/slot/entity/Slot.java
 package com.nowait.domain.slot.entity;
 
@@ -94,4 +87,3 @@ public class Slot extends BaseTimeEntity {
         this.remainCount = Math.max(0, this.remainCount + diff);
     }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

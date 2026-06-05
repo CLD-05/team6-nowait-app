@@ -1,10 +1,5 @@
 package com.nowait.global.common;
 
-<<<<<<< HEAD
-public class BaseTimeEntity {
-
-}
-=======
 import jakarta.persistence.Column;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.MappedSuperclass;
@@ -28,4 +23,3 @@ public abstract class BaseTimeEntity {
   @Column(name = "updated_at", nullable = false)
   private LocalDateTime updatedAt;
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

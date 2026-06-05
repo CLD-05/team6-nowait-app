@@ -1,6 +1,5 @@
 package com.nowait.domain.restaurant.entity;
 
-<<<<<<< HEAD
 import java.time.LocalTime;
 
 import com.nowait.domain.restaurant.type.RestaurantCategory;
@@ -93,8 +92,4 @@ public class Restaurant extends BaseTimeEntity {
 		this.wifiAvailable = wifiAvailable != null ? wifiAvailable : "N";
 		this.multilingualMenuAvailable = multilingualMenuAvailable != null ? multilingualMenuAvailable : "N";
 	}
-=======
-public class Restaurant {
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
-
 }

@@ -1,16 +1,5 @@
 package com.nowait.global.security.principal;
 
-<<<<<<< HEAD
-public class CustomUserDetails {
-
-	public Long getId() {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-
-}
-=======
 import com.nowait.domain.user.type.UserRole;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -45,4 +34,3 @@ public class CustomUserDetails implements UserDetails {
     @Override public boolean isCredentialsNonExpired() { return true; }
     @Override public boolean isEnabled() { return true; }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

@@ -1,9 +1,5 @@
 package com.nowait.domain.reservation.service;
 
-<<<<<<< HEAD
-public class ReservationService {
-
-=======
 import com.nowait.domain.reservation.dto.ReservationCreateRequest;
 import com.nowait.domain.reservation.dto.ReservationResponse;
 import com.nowait.domain.reservation.entity.Reservation;
@@ -167,5 +163,4 @@ public class ReservationService {
 
         return ReservationResponse.from(reservation);
     }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
 }

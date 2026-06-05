@@ -1,6 +1,5 @@
 package com.nowait.domain.restaurant.service;
 
-<<<<<<< HEAD
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -63,11 +62,7 @@ public class RestaurantService {
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
 		
 		if (!restaurant.getOwnerId().equals(owenrId)) {
-			throw new BusinessException(ErrorCode.HANDLE_ACCESS_DENIED);
+			throw new BusinessException(ErrorCode.USER_NOT_FOUND);
 		}
 	}
-=======
-public class RestaurantService {
-
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
 }

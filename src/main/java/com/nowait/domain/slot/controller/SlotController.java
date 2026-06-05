@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-package com.nowait.domain.slot.controller;
-
-public class SlotController {
-
-}
-=======
 // domain/slot/controller/SlotController.java
 package com.nowait.domain.slot.controller;
 
@@ -65,4 +58,3 @@ public class SlotController {
         return ResponseEntity.ok(slotService.updateSlot(slotId, request));
     }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

@@ -1,6 +1,5 @@
 package com.nowait.domain.restaurant.controller;
 
-<<<<<<< HEAD
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
@@ -39,7 +38,7 @@ public class RestaurantController {
 			@Valid @RequestBody RestaurantRegisterRequest request,
 			@AuthenticationPrincipal CustomUserDetails userDetails
 			) {
-		Long restaurantId = restaurantService.registerRestaurant(request, userDetails.getId());
+		Long restaurantId = restaurantService.registerRestaurant(request, userDetails.getUserId());
 		return ResponseEntity.status(HttpStatus.CREATED).body(restaurantId);
 	}
 	
@@ -74,11 +73,7 @@ public class RestaurantController {
 			@Valid @RequestBody RestaurantUpdateRequest request,
 			@AuthenticationPrincipal CustomUserDetails userDetails
 			) {
-		restaurantService.updateRestaurant(restaurantId, request, userDetails.getId());
+		restaurantService.updateRestaurant(restaurantId, request, userDetails.getUserId());
 		return ResponseEntity.ok().build();
 	}
-=======
-public class RestaurantController {
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
-
 }

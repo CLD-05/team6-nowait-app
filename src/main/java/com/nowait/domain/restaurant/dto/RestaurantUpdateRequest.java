@@ -1,6 +1,5 @@
 package com.nowait.domain.restaurant.dto;
 
-<<<<<<< HEAD
 import java.time.LocalTime;
 
 import jakarta.validation.constraints.NotNull;
@@ -26,8 +25,5 @@ public class RestaurantUpdateRequest {
 	private String parkingAvailable;
 	private String wifiAvailable;
 	private String multilingulMenuAvailable;
-=======
-public class RestaurantUpdateRequest {
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
 
 }

@@ -1,6 +1,5 @@
 package com.nowait.domain.user.controller;
 
-<<<<<<< HEAD
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,7 +25,7 @@ public class UserController {
 	@GetMapping("/me")
 	public ResponseEntity<UserResponse> getMyProfile(@AuthenticationPrincipal CustomUserDetails userDetails) {
 	
-	Long loggedInUserId = userDetails.getId();
+	Long loggedInUserId = userDetails.getUserId();
 	
 	UserResponse response = userService.getUserInfo(loggedInUserId);
 	
@@ -38,14 +37,10 @@ public class UserController {
 			@AuthenticationPrincipal CustomUserDetails userDetails,
 			@jakarta.validation.Valid @RequestBody UserUpdateRequest request) {
 		
-		Long loggedInUserId = userDetails.getId();
+		Long loggedInUserId = userDetails.getUserId();
 		
 		UserResponse updatedResponse = userService.updateUserInfo(loggedInUserId, request);
 		
 		return ResponseEntity.ok(updatedResponse);
 	}
-=======
-public class UserController {
-
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
 }

@@ -1,10 +1,5 @@
 package com.nowait.domain.slot.service;
 
-<<<<<<< HEAD
-public class SlotService {
-
-}
-=======
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
 import com.nowait.domain.slot.dto.SlotCreateRequest;
@@ -97,4 +92,3 @@ public class SlotService {
         slot.increase();
     }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

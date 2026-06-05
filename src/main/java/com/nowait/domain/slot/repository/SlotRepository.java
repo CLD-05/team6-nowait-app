@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-package com.nowait.domain.slot.repository;
-
-public interface SlotRepository {
-
-}
-=======
 // domain/slot/repository/SlotRepository.java
 package com.nowait.domain.slot.repository;
 
@@ -33,4 +26,3 @@ public interface SlotRepository extends JpaRepository<Slot, Long> {
     @Query("SELECT s FROM Slot s WHERE s.id = :id")
     Optional<Slot> findByIdWithLock(@Param("id") Long id);
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

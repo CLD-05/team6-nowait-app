@@ -1,6 +1,5 @@
 package com.nowait.domain.user.service;
 
-<<<<<<< HEAD
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,8 +39,5 @@ public class UserService {
 		
 		return UserResponse.of(user);
 	}
-=======
-public class UserService {
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
 
 }

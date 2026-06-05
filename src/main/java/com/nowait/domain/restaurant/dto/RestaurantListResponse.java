@@ -1,6 +1,5 @@
 package com.nowait.domain.restaurant.dto;
 
-<<<<<<< HEAD
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.type.RestaurantCategory;
 
@@ -28,8 +27,4 @@ public class RestaurantListResponse {
 				restaurant.getMainMenuName()
 				);
 	}
-=======
-public class RestaurantListResponse {
-
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
 }

@@ -1,10 +1,5 @@
 package com.nowait.domain.reservation.entity;
 
-<<<<<<< HEAD
-public class Reservation {
-
-}
-=======
 import com.nowait.domain.reservation.type.ReservationStatus;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.slot.entity.Slot;
@@ -81,4 +76,3 @@ public class Reservation extends BaseTimeEntity {
         return this.status == ReservationStatus.CONFIRMED;
     }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

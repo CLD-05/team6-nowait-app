@@ -1,10 +1,5 @@
 package com.nowait.global.exception;
 
-<<<<<<< HEAD
-public class ErrorResponse {
-
-}
-=======
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.LocalDateTime;
@@ -42,4 +37,3 @@ public record ErrorResponse(
   public record FieldError(String field, String value, String reason) {
   }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

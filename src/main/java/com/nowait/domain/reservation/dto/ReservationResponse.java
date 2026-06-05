@@ -1,10 +1,5 @@
 package com.nowait.domain.reservation.dto;
 
-<<<<<<< HEAD
-public class ReservationResponse {
-
-}
-=======
 import com.nowait.domain.reservation.entity.Reservation;
 import com.nowait.domain.reservation.type.ReservationStatus;
 
@@ -38,4 +33,3 @@ public record ReservationResponse(
         );
     }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

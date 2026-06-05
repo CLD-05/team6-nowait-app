@@ -1,6 +1,5 @@
 package com.nowait.domain.user.entity;
 
-<<<<<<< HEAD
 import org.springframework.data.annotation.Id;
 
 import com.nowait.domain.user.type.UserRole;
@@ -54,8 +53,4 @@ public class User extends BaseTimeEntity{
 			this.name = name;
 		}
 	}
-=======
-public class User {
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
-
 }

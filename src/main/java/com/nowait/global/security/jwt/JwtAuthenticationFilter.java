@@ -1,10 +1,5 @@
 package com.nowait.global.security.jwt;
 
-<<<<<<< HEAD
-public class JwtAuthenticationFilter {
-
-}
-=======
 import com.nowait.domain.user.type.UserRole;
 import com.nowait.global.security.principal.CustomUserDetails;
 import jakarta.servlet.FilterChain;
@@ -59,4 +54,3 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         return null;
     }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

@@ -1,10 +1,5 @@
 package com.nowait.global.exception;
 
-<<<<<<< HEAD
-public class GlobalExceptionHandler {
-
-}
-=======
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -73,4 +68,3 @@ public class GlobalExceptionHandler {
         .body(ErrorResponse.of(ErrorCode.INTERNAL_SERVER_ERROR, request.getRequestURI()));
   }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

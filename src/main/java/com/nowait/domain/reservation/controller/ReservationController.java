@@ -1,10 +1,5 @@
 package com.nowait.domain.reservation.controller;
 
-<<<<<<< HEAD
-public class ReservationController {
-
-}
-=======
 import com.nowait.domain.reservation.dto.ReservationCreateRequest;
 import com.nowait.domain.reservation.dto.ReservationResponse;
 import com.nowait.domain.reservation.service.ReservationService;
@@ -36,7 +31,7 @@ public class ReservationController {
         @Valid @RequestBody ReservationCreateRequest request
     ) {
         ReservationResponse response = reservationService.createReservation(
-            userDetails.getId(), request
+            userDetails.getUserId(), request
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -50,7 +45,7 @@ public class ReservationController {
         @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
         List<ReservationResponse> responses = reservationService.getMyReservations(
-            userDetails.getId()
+            userDetails.getUserId()
         );
         return ResponseEntity.ok(responses);
     }
@@ -65,7 +60,7 @@ public class ReservationController {
         @PathVariable Long reservationId
     ) {
         ReservationResponse response = reservationService.getReservation(
-            userDetails.getId(), reservationId
+            userDetails.getUserId(), reservationId
         );
         return ResponseEntity.ok(response);
     }
@@ -80,7 +75,7 @@ public class ReservationController {
         @PathVariable Long reservationId
     ) {
         ReservationResponse response = reservationService.cancelReservation(
-            userDetails.getId(), reservationId
+            userDetails.getUserId(), reservationId
         );
         return ResponseEntity.ok(response);
     }
@@ -113,4 +108,3 @@ public class ReservationController {
         return ResponseEntity.ok(response);
     }
 }
->>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
