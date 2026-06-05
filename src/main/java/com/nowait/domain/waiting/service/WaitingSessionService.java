@@ -5,6 +5,7 @@ import com.nowait.domain.waiting.dto.WaitingSessionOpenRequest;
 import com.nowait.domain.waiting.dto.WaitingSessionResponse;
 import com.nowait.domain.waiting.entity.WaitingSession;
 import com.nowait.domain.waiting.repository.WaitingSessionRepository;
+import com.nowait.domain.waiting.repository.WaitingRedisRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class WaitingSessionService {
 
   private final WaitingSessionRepository waitingSessionRepository;
   private final RestaurantOwnerRepository restaurantOwnerRepository;
+  private final WaitingRedisRepository waitingRedisRepository;
 
   public WaitingSessionResponse getTodaySession(Long restaurantId) {
     WaitingSession session = waitingSessionRepository
@@ -44,6 +46,7 @@ public class WaitingSessionService {
     WaitingSession session = WaitingSession.open(
         restaurantId, today, request.maxWaitingCount(), LocalDateTime.now());
     waitingSessionRepository.save(session);
+    waitingRedisRepository.initSession(session.getId());
 
     log.info("Waiting session opened. sessionId={}, restaurantId={}", session.getId(), restaurantId);
     return WaitingSessionResponse.from(session);
@@ -72,6 +75,7 @@ public class WaitingSessionService {
     WaitingSession session = findSessionOrThrow(sessionId);
     verifyOwnership(session.getRestaurantId(), loginUserId);
     session.close(LocalDateTime.now());
+    waitingRedisRepository.clearSession(sessionId);
     log.info("Waiting session closed. sessionId={}", sessionId);
     return WaitingSessionResponse.from(session);
   }
