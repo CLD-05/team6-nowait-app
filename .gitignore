@@ -39,24 +39,10 @@ release.properties
 *.original
 spring-shell.log
 HELP.md
-.metadata/
-.settings/
-.project
-.classpath
-.factorypath
-.springBeans
-bin/
-tmp/
-*.tmp
-*.bak
-*.swp
-*~.nib
-.recommenders/
 
 # 로컬 환경 설정 (절대 커밋 금지)
 application-local.yml
 application-local.properties
-application.properties
 application-secret.yml
 application-secret.properties
 
