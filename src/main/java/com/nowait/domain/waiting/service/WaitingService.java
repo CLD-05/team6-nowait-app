@@ -45,7 +45,7 @@ public class WaitingService {
         .findSessionOrThrow(findTodaySessionId(restaurantId));
 
     if (!session.getStatus().canAcceptWaiting()) {
-      throw new BusinessException(ErrorCode.SESSION_NOT_ACCEPTING);
+      throw new BusinessException(ErrorCode.WAITING_SESSION_NOT_ACCEPTING);
     }
     if (waitingRepository.existsByUserIdAndSessionIdAndStatusIn(
         loginUserId, session.getId(), ACTIVE_STATUSES)) {

@@ -57,6 +57,7 @@ tmp/
 application-local.yml
 application-local.properties
 application.properties
+application.yml
 application-secret.yml
 application-secret.properties
 
@@ -122,3 +123,5 @@ log/
 # ==================
 coverage/
 *.lcov
+
+#클로드

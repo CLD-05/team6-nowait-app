@@ -27,7 +27,7 @@ public class WaitingSessionService {
   public WaitingSessionResponse getTodaySession(Long restaurantId) {
     WaitingSession session = waitingSessionRepository
         .findByRestaurantIdAndSessionDate(restaurantId, LocalDate.now())
-        .orElseThrow(() -> new BusinessException(ErrorCode.SESSION_NOT_FOUND));
+        .orElseThrow(() -> new BusinessException(ErrorCode.WAITING_SESSION_NOT_FOUND));
     return WaitingSessionResponse.from(session);
   }
 
@@ -38,7 +38,7 @@ public class WaitingSessionService {
 
     LocalDate today = LocalDate.now();
     if (waitingSessionRepository.existsByRestaurantIdAndSessionDate(restaurantId, today)) {
-      throw new BusinessException(ErrorCode.SESSION_ALREADY_EXISTS_TODAY);
+      throw new BusinessException(ErrorCode.WAITING_SESSION_ALREADY_EXISTS);
     }
 
     WaitingSession session = WaitingSession.open(
@@ -78,7 +78,7 @@ public class WaitingSessionService {
 
   public WaitingSession findSessionOrThrow(Long sessionId) {
     return waitingSessionRepository.findById(sessionId)
-        .orElseThrow(() -> new BusinessException(ErrorCode.SESSION_NOT_FOUND));
+        .orElseThrow(() -> new BusinessException(ErrorCode.WAITING_SESSION_NOT_FOUND));
   }
 
   private void verifyOwnership(Long restaurantId, Long loginUserId) {
