@@ -61,7 +61,7 @@ public class ReservationService {
         }
 
         // 슬롯 잔여 수 차감
-        slot.decreaseRemainCount();
+        slot.decrease();
 
         // 예약 생성
         Reservation reservation = Reservation.builder()
@@ -123,7 +123,7 @@ public class ReservationService {
         }
 
         // 슬롯 잔여 수 복구
-        reservation.getSlot().increaseRemainCount();
+        reservation.getSlot().increase();
 
         reservation.cancel();
 

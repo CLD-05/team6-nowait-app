@@ -1,5 +1,30 @@
 package com.nowait.domain.restaurant.dto;
 
-public class RestaurantListResponse {
+import com.nowait.domain.restaurant.entity.Restaurant;
+import com.nowait.domain.restaurant.type.RestaurantCategory;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+@Getter
+@AllArgsConstructor
+public class RestaurantListResponse {
+	
+	private Long id;
+	private String name;
+	private RestaurantCategory category;
+	private String address;
+	private String imageUrl;
+	private String mainMenuName;
+	
+	public static RestaurantListResponse from(Restaurant restaurant) {
+		return new RestaurantListResponse(
+				restaurant.getId(),
+				restaurant.getName(),
+				restaurant.getCategory(),
+				restaurant.getAddress(),
+				restaurant.getImageUrl(),
+				restaurant.getMainMenuName()
+				);
+	}
 }
