@@ -1,5 +1,6 @@
 package com.nowait.domain.restaurant.service;
 
+<<<<<<< HEAD
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -65,4 +66,8 @@ public class RestaurantService {
 			throw new BusinessException(ErrorCode.HANDLE_ACCESS_DENIED);
 		}
 	}
+=======
+public class RestaurantService {
+
+>>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
 }

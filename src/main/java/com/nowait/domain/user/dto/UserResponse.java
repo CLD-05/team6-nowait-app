@@ -1,5 +1,6 @@
 package com.nowait.domain.user.dto;
 
+<<<<<<< HEAD
 import com.nowait.domain.user.entity.User;
 import com.nowait.domain.user.type.UserRole;
 
@@ -23,5 +24,8 @@ public class UserResponse {
 				user.getRole()
 				);
 	}
+=======
+public class UserResponse {
+>>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
 
 }

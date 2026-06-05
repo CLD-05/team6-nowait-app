@@ -1,5 +1,6 @@
 package com.nowait.domain.restaurant.controller;
 
+<<<<<<< HEAD
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
@@ -76,5 +77,8 @@ public class RestaurantController {
 		restaurantService.updateRestaurant(restaurantId, request, userDetails.getId());
 		return ResponseEntity.ok().build();
 	}
+=======
+public class RestaurantController {
+>>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
 
 }

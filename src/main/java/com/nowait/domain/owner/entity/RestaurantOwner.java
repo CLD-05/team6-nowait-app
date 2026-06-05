@@ -1,5 +1,6 @@
 package com.nowait.domain.owner.entity;
 
+<<<<<<< HEAD
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
@@ -40,5 +41,8 @@ public class RestaurantOwner {
 		this.createdAt = LocalDateTime.now();
 		
 	}
+=======
+public class RestaurantOwner {
+>>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
 
 }

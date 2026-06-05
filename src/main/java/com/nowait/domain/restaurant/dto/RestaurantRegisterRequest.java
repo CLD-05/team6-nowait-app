@@ -1,5 +1,6 @@
 package com.nowait.domain.restaurant.dto;
 
+<<<<<<< HEAD
 import java.time.LocalTime;
 
 import com.nowait.domain.restaurant.entity.Restaurant;
@@ -60,3 +61,8 @@ public class RestaurantRegisterRequest {
 	}
 
 }
+=======
+public class RestaurantRegisterRequest {
+
+}
+>>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d

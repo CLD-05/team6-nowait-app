@@ -1,5 +1,6 @@
 package com.nowait.domain.restaurant.dto;
 
+<<<<<<< HEAD
 import java.time.LocalTime;
 
 import com.nowait.domain.restaurant.entity.Restaurant;
@@ -46,5 +47,8 @@ public class RestaurantDetailResponse {
 				);
 		
 	}
+=======
+public class RestaurantDetailResponse {
+>>>>>>> af9714f01c8ab88ccbba7992a4dc2d9ec0b9693d
 
 }
