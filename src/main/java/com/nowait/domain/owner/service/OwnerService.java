@@ -51,7 +51,7 @@ public class OwnerService {
 	    // repository에 맞게 RestaurantOwner 객체를 찾아서 지워줍니다.
 	    // (참고: 팀원이 만든 레포지토리 메서드명에 따라 findByUserId 등이 쓰일 수 있습니다.)
 	    RestaurantOwner restaurantOwner = restaurantOwnerRepository.findByUserId(ownerId)
-	            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+	            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER));
 
 	    restaurantOwnerRepository.delete(restaurantOwner);
 	}
