@@ -73,6 +73,10 @@ public class Restaurant extends BaseTimeEntity {
 	@Column(name = "multilingual_menu_available", length = 1)
 	private String multilingualMenuAvailable = "N";
 	
+	public void updateImage(String imageUrl) {
+		this.imageUrl = imageUrl;
+	}
+	
 	@Builder
 	public Restaurant(Long ownerId, String name, RestaurantCategory category, String address, String phoneNumber,
 			String description, String imageUrl, String mainMenuName, LocalTime openTime, LocalTime closeTime,

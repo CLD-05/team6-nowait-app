@@ -43,6 +43,8 @@ public enum ErrorCode {
     ALREADY_PROCESSED_WAITING(HttpStatus.CONFLICT, "W411", "이미 처리된 웨이팅입니다."),
     WAITING_SESSION_ALREADY_EXISTS(HttpStatus.CONFLICT, "WS409", "오늘 이미 오픈된 세션이 있습니다."),
     WAITING_SESSION_NOT_ACCEPTING(HttpStatus.CONFLICT, "WS410", "현재 웨이팅을 받을 수 없는 상태입니다."),
+    OWNER_ALREADY_EXISTS(HttpStatus.CONFLICT, "RO409", "이미 다른 식당의 점주로 등록된 유저입니다."),
+    RESTAURANT_ALREADY_HAS_OWNER(HttpStatus.CONFLICT, "RO410", "이미 점주가 지정된 식당입니다."),
 
     // 500
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "S500", "서버 내부 오류가 발생했습니다.");
