@@ -3,10 +3,8 @@ package com.nowait.domain.owner.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.amazonaws.services.s3.model.Owner;
 import com.nowait.domain.owner.dto.OwnerRegisterRequest;
 import com.nowait.domain.owner.dto.OwnerResponse;
-import com.nowait.domain.owner.dto.OwnerUpdateRequest;
 import com.nowait.domain.owner.entity.RestaurantOwner;
 import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
 import com.nowait.global.exception.BusinessException;
