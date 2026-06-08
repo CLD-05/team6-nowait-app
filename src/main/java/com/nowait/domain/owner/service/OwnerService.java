@@ -3,8 +3,10 @@ package com.nowait.domain.owner.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.amazonaws.services.s3.model.Owner;
 import com.nowait.domain.owner.dto.OwnerRegisterRequest;
 import com.nowait.domain.owner.dto.OwnerResponse;
+import com.nowait.domain.owner.dto.OwnerUpdateRequest;
 import com.nowait.domain.owner.entity.RestaurantOwner;
 import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
 import com.nowait.global.exception.BusinessException;
@@ -44,5 +46,15 @@ public class OwnerService {
 				.orElseThrow(() -> new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER));
 		
 		return OwnerResponse.from(restaurantOwner);
+	}
+	
+	@Transactional
+	public void deleteOwner(Long ownerId) {
+	    // repository에 맞게 RestaurantOwner 객체를 찾아서 지워줍니다.
+	    // (참고: 팀원이 만든 레포지토리 메서드명에 따라 findByUserId 등이 쓰일 수 있습니다.)
+	    RestaurantOwner restaurantOwner = restaurantOwnerRepository.findByUserId(ownerId)
+	            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+	    restaurantOwnerRepository.delete(restaurantOwner);
 	}
 }
