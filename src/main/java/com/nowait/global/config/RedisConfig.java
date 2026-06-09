@@ -1,10 +1,14 @@
 package com.nowait.global.config;
 
+import com.nowait.global.sse.SseEventPublisher;
+import com.nowait.global.sse.SseRedisSubscriber;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.listener.ChannelTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
@@ -30,5 +34,26 @@ public class RedisConfig {
     template.setKeySerializer(new StringRedisSerializer());
     template.setHashKeySerializer(new StringRedisSerializer());
     return template;
+  }
+
+  /* SSE Pub/Sub 채널 토픽 */
+  @Bean
+  public ChannelTopic sseEventTopic() {
+    return new ChannelTopic(SseEventPublisher.CHANNEL);
+  }
+
+  /*
+   * SSE 이벤트 구독 컨테이너.
+   * 모든 Pod 가 같은 채널을 구독하여 사용자 SSE 커넥션이 어느 Pod 에 있든 전달 가능.
+   */
+  @Bean
+  public RedisMessageListenerContainer sseRedisListenerContainer(
+      RedisConnectionFactory factory,
+      SseRedisSubscriber subscriber,
+      ChannelTopic sseEventTopic) {
+    RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+    container.setConnectionFactory(factory);
+    container.addMessageListener(subscriber, sseEventTopic);
+    return container;
   }
 }

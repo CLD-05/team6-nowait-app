@@ -8,6 +8,7 @@ import com.nowait.domain.user.entity.User;
 import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
+import com.nowait.global.sse.SseEventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,8 +20,11 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class NotificationService {
 
+    private static final String SSE_EVENT_NAME = "notification";
+
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
+    private final SseEventPublisher sseEventPublisher;
 
     /**
      * [내부 호출용] 알림 생성
@@ -39,6 +43,15 @@ public class NotificationService {
             .build();
 
         notificationRepository.save(notification);
+
+        /* 실시간 타입만 SSE 로 즉시 push (Redis Pub/Sub 으로 fan-out) */
+        if (type.isRealtime()) {
+            sseEventPublisher.publish(
+                userId,
+                SSE_EVENT_NAME,
+                NotificationResponse.from(notification)
+            );
+        }
     }
 
     /**
