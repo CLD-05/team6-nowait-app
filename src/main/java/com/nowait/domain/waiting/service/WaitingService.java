@@ -1,28 +1,33 @@
 package com.nowait.domain.waiting.service;
 
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nowait.domain.notification.service.NotificationService;
 import com.nowait.domain.notification.type.NotificationType;
 import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
+import com.nowait.domain.waiting.dto.WaitingCallLogResponse;
 import com.nowait.domain.waiting.dto.WaitingRegisterRequest;
-import com.nowait.domain.waiting.repository.WaitingRedisRepository;
 import com.nowait.domain.waiting.dto.WaitingResponse;
 import com.nowait.domain.waiting.entity.Waiting;
+import com.nowait.domain.waiting.entity.WaitingCallLog;
 import com.nowait.domain.waiting.entity.WaitingSession;
+import com.nowait.domain.waiting.repository.WaitingCallLogRepository;
+import com.nowait.domain.waiting.repository.WaitingRedisRepository;
 import com.nowait.domain.waiting.repository.WaitingRepository;
 import com.nowait.domain.waiting.type.WaitingStatus;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Set;
 
 @Slf4j
 @Service
@@ -31,6 +36,7 @@ import java.util.Set;
 public class WaitingService {
 
   private static final Set<WaitingStatus> ACTIVE_STATUSES = Set.of(WaitingStatus.WAITING, WaitingStatus.CALLED);
+  private final WaitingCallLogRepository waitingCallLogRepository;
   private static final int NEAR_CALL_THRESHOLD = 5;
 
   private final WaitingRepository waitingRepository;
@@ -139,7 +145,18 @@ public class WaitingService {
   public WaitingResponse call(Long waitingId, Long loginUserId) {
     Waiting waiting = findWaitingOrThrow(waitingId);
     verifyOwnership(waiting.getRestaurantId(), loginUserId);
-    waiting.call(LocalDateTime.now());
+    
+    LocalDateTime now = LocalDateTime.now();
+    int currentCallCount = waitingCallLogRepository.countByWaiting(waiting);
+    
+    WaitingCallLog logEntity = WaitingCallLog.builder()
+    		.waiting(waiting)
+    		.callSequence(currentCallCount + 1)
+    		.calledAt(now)
+    		.build();
+    waitingCallLogRepository.save(logEntity);
+    
+    waiting.call(now);
 
     // 점주 호출 알림 (트랜잭션 묶음 — 실패 시 호출도 롤백)
     String restaurantName = getRestaurantName(waiting.getRestaurantId());
@@ -273,4 +290,18 @@ public class WaitingService {
       throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
     }
   }
+  
+  public List<WaitingCallLogResponse> getCallLogs(Long waitingId, Long loginUserId) {
+	  
+	  Waiting waiting = findWaitingOrThrow(waitingId);
+	  
+	  verifyOwnership(waiting.getRestaurantId(), loginUserId);
+	  
+	  List<WaitingCallLog> logs = waitingCallLogRepository.findAllByWaitingOrderByCallSequenceAsc(waiting);
+	  
+	  return logs.stream()
+			  .map(WaitingCallLogResponse::new)
+			  .toList();
+  }
+  
 }
