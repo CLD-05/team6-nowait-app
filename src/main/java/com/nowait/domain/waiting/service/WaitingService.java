@@ -1,24 +1,29 @@
 package com.nowait.domain.waiting.service;
 
-import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
-import com.nowait.domain.waiting.dto.WaitingRegisterRequest;
-import com.nowait.domain.waiting.repository.WaitingRedisRepository;
-import com.nowait.domain.waiting.dto.WaitingResponse;
-import com.nowait.domain.waiting.entity.Waiting;
-import com.nowait.domain.waiting.entity.WaitingSession;
-import com.nowait.domain.waiting.repository.WaitingRepository;
-import com.nowait.domain.waiting.type.WaitingStatus;
-import com.nowait.global.exception.BusinessException;
-import com.nowait.global.exception.ErrorCode;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Set;
+import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
+import com.nowait.domain.waiting.dto.WaitingCallLogResponse;
+import com.nowait.domain.waiting.dto.WaitingRegisterRequest;
+import com.nowait.domain.waiting.dto.WaitingResponse;
+import com.nowait.domain.waiting.entity.Waiting;
+import com.nowait.domain.waiting.entity.WaitingCallLog;
+import com.nowait.domain.waiting.entity.WaitingSession;
+import com.nowait.domain.waiting.repository.WaitingCallLogRepository;
+import com.nowait.domain.waiting.repository.WaitingRedisRepository;
+import com.nowait.domain.waiting.repository.WaitingRepository;
+import com.nowait.domain.waiting.type.WaitingStatus;
+import com.nowait.global.exception.BusinessException;
+import com.nowait.global.exception.ErrorCode;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
@@ -27,6 +32,7 @@ import java.util.Set;
 public class WaitingService {
 
   private static final Set<WaitingStatus> ACTIVE_STATUSES = Set.of(WaitingStatus.WAITING, WaitingStatus.CALLED);
+  private final WaitingCallLogRepository waitingCallLogRepository;
 
   private final WaitingRepository waitingRepository;
   private final WaitingSessionService waitingSessionService;
@@ -129,7 +135,19 @@ public class WaitingService {
   public WaitingResponse call(Long waitingId, Long loginUserId) {
     Waiting waiting = findWaitingOrThrow(waitingId);
     verifyOwnership(waiting.getRestaurantId(), loginUserId);
-    waiting.call(LocalDateTime.now());
+    
+    LocalDateTime now = LocalDateTime.now();
+    
+    int currentCallCount = waitingCallLogRepository.countByWaiting(waiting);
+    
+    WaitingCallLog logEntity = WaitingCallLog.builder()
+    		.waiting(waiting)
+    		.callSequence(currentCallCount + 1)
+    		.calledAt(now)
+    		.build();
+    waitingCallLogRepository.save(logEntity);
+    
+    waiting.call(now);
     log.info("Waiting called. waitingId={}", waitingId);
     return WaitingResponse.from(waiting);
   }
@@ -210,4 +228,18 @@ public class WaitingService {
       throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
     }
   }
+  
+  public List<WaitingCallLogResponse> getCallLogs(Long waitingId, Long loginUserId) {
+	  
+	  Waiting waiting = findWaitingOrThrow(waitingId);
+	  
+	  verifyOwnership(waiting.getRestaurantId(), loginUserId);
+	  
+	  List<WaitingCallLog> logs = waitingCallLogRepository.findAllByWaitingOrderByCallSequenceAsc(waiting);
+	  
+	  return logs.stream()
+			  .map(WaitingCallLogResponse::new)
+			  .toList();
+  }
+  
 }
