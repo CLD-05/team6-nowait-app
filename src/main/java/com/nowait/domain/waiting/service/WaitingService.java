@@ -1,6 +1,10 @@
 package com.nowait.domain.waiting.service;
 
+import com.nowait.domain.notification.service.NotificationService;
+import com.nowait.domain.notification.type.NotificationType;
 import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
+import com.nowait.domain.restaurant.entity.Restaurant;
+import com.nowait.domain.restaurant.repository.RestaurantRepository;
 import com.nowait.domain.waiting.dto.WaitingRegisterRequest;
 import com.nowait.domain.waiting.repository.WaitingRedisRepository;
 import com.nowait.domain.waiting.dto.WaitingResponse;
@@ -27,11 +31,14 @@ import java.util.Set;
 public class WaitingService {
 
   private static final Set<WaitingStatus> ACTIVE_STATUSES = Set.of(WaitingStatus.WAITING, WaitingStatus.CALLED);
+  private static final int NEAR_CALL_THRESHOLD = 5;
 
   private final WaitingRepository waitingRepository;
   private final WaitingSessionService waitingSessionService;
   private final RestaurantOwnerRepository restaurantOwnerRepository;
   private final WaitingRedisRepository waitingRedisRepository;
+  private final NotificationService notificationService;
+  private final RestaurantRepository restaurantRepository;
 
   @Value("${waiting.call-timeout-minutes:10}")
   private long callTimeoutMinutes;
@@ -74,6 +81,9 @@ public class WaitingService {
 
     log.info("Waiting registered. waitingId={}, sessionId={}, number={}, userId={}, redisCount={}",
         waiting.getId(), session.getId(), nextNumber, loginUserId, newCount);
+
+    // 신규 등록자가 6번째 자리이면 앞 5팀 알림 발송
+    notifyNearCallIfThreshold(session.getId());
 
     return WaitingResponse.of(waiting, 0L);
   }
@@ -130,6 +140,15 @@ public class WaitingService {
     Waiting waiting = findWaitingOrThrow(waitingId);
     verifyOwnership(waiting.getRestaurantId(), loginUserId);
     waiting.call(LocalDateTime.now());
+
+    // 점주 호출 알림 (트랜잭션 묶음 — 실패 시 호출도 롤백)
+    String restaurantName = getRestaurantName(waiting.getRestaurantId());
+    notificationService.notify(
+        waiting.getUserId(),
+        NotificationType.WAITING_CALLED,
+        restaurantName + " 입장해주세요!"
+    );
+
     log.info("Waiting called. waitingId={}", waitingId);
     return WaitingResponse.from(waiting);
   }
@@ -164,6 +183,9 @@ public class WaitingService {
     session.decreaseCurrentCount();
     waitingRedisRepository.decrementCount(session.getId()); // Redis 카운트도 감소
 
+    // 입장으로 한 자리 비었으니 새 6번째 후보에게 앞 5팀 알림 발송
+    notifyNearCallIfThreshold(waiting.getSessionId());
+
     log.info("Waiting entered. waitingId={}", waitingId);
     return WaitingResponse.from(waiting);
   }
@@ -184,6 +206,13 @@ public class WaitingService {
     for (Waiting w : expired) {
       applyCancel(w);
     }
+
+    // 영향받은 세션마다 한 번씩 앞 5팀 알림 체크
+    expired.stream()
+        .map(Waiting::getSessionId)
+        .distinct()
+        .forEach(this::notifyNearCallIfThreshold);
+
     log.info("Auto-cancelled {} waitings due to timeout (>{}min)", expired.size(), callTimeoutMinutes);
     return expired.size();
   }
@@ -194,6 +223,40 @@ public class WaitingService {
     waiting.cancel(LocalDateTime.now());
     session.decreaseCurrentCount();
     waitingRedisRepository.decrementCount(session.getId()); // Redis 카운트도 감소
+
+    // 취소로 자리가 비었으니 새 6번째 후보에게 앞 5팀 알림 발송
+    notifyNearCallIfThreshold(waiting.getSessionId());
+  }
+
+  /* 앞 5팀 도달 시 1회 알림 (이미 받은 사람은 스킵)
+   * - 본 작업(취소/입장 등)에 영향 안 주도록 try-catch 격리
+   */
+  private void notifyNearCallIfThreshold(Long sessionId) {
+    try {
+      List<Waiting> active = waitingRepository
+          .findBySessionIdAndStatusInOrderByWaitingNumberAsc(sessionId, ACTIVE_STATUSES);
+
+      if (active.size() <= NEAR_CALL_THRESHOLD) return;
+
+      Waiting candidate = active.get(NEAR_CALL_THRESHOLD); // index 5 = 앞에 5팀
+      if (candidate.isNearCallNotified()) return;
+
+      String restaurantName = getRestaurantName(candidate.getRestaurantId());
+      notificationService.notify(
+          candidate.getUserId(),
+          NotificationType.WAITING_NEAR_CALL,
+          restaurantName + " 입장까지 5팀 남았어요!"
+      );
+      candidate.markNearCallNotified();
+    } catch (Exception e) {
+      log.error("Failed to send near-call notification. sessionId={}", sessionId, e);
+    }
+  }
+
+  private String getRestaurantName(Long restaurantId) {
+    return restaurantRepository.findById(restaurantId)
+        .map(Restaurant::getName)
+        .orElse("매장");
   }
 
   private Waiting findWaitingOrThrow(Long waitingId) {
