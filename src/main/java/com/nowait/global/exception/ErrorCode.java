@@ -23,6 +23,7 @@ public enum ErrorCode {
     NOT_RESTAURANT_OWNER(HttpStatus.FORBIDDEN, "A405", "해당 식당의 점주가 아닙니다."),
     RESERVATION_ACCESS_DENIED(HttpStatus.FORBIDDEN, "RS403", "본인의 예약이 아닙니다."),
     REVIEW_ACCESS_DENIED(HttpStatus.FORBIDDEN, "RV403", "본인의 리뷰가 아닙니다."),
+    NOTIFICATION_ACCESS_DENIED(HttpStatus.FORBIDDEN, "N403", "본인의 알림이 아닙니다."),
 
     // 404 Not Found
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U404", "사용자를 찾을 수 없습니다."),
@@ -32,6 +33,7 @@ public enum ErrorCode {
     WAITING_NOT_FOUND(HttpStatus.NOT_FOUND, "W404", "웨이팅을 찾을 수 없습니다."),
     WAITING_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "WS404", "운영 중인 웨이팅 세션이 없습니다."),
     REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "RV404", "리뷰를 찾을 수 없습니다."),
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "N404", "알림을 찾을 수 없습니다."),
 
     // 409 Conflict
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U409", "이미 사용 중인 이메일입니다."),
