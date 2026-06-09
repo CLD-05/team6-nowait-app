@@ -17,11 +17,14 @@ public enum ErrorCode {
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "A401", "이메일 또는 비밀번호가 일치하지 않습니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "A402", "유효하지 않은 토큰입니다."),
     EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "A403", "만료된 토큰입니다."),
+    INVALID_SSE_TICKET(HttpStatus.UNAUTHORIZED, "SSE401", "유효하지 않거나 만료된 SSE 티켓입니다."),
 
     // 403 Forbidden
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "A404", "접근 권한이 없습니다."),
     NOT_RESTAURANT_OWNER(HttpStatus.FORBIDDEN, "A405", "해당 식당의 점주가 아닙니다."),
     RESERVATION_ACCESS_DENIED(HttpStatus.FORBIDDEN, "RS403", "본인의 예약이 아닙니다."),
+    REVIEW_ACCESS_DENIED(HttpStatus.FORBIDDEN, "RV403", "본인의 리뷰가 아닙니다."),
+    NOTIFICATION_ACCESS_DENIED(HttpStatus.FORBIDDEN, "N403", "본인의 알림이 아닙니다."),
 
     // 404 Not Found
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U404", "사용자를 찾을 수 없습니다."),
@@ -30,6 +33,8 @@ public enum ErrorCode {
     RESERVATION_NOT_FOUND(HttpStatus.NOT_FOUND, "RS404", "예약을 찾을 수 없습니다."),
     WAITING_NOT_FOUND(HttpStatus.NOT_FOUND, "W404", "웨이팅을 찾을 수 없습니다."),
     WAITING_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "WS404", "운영 중인 웨이팅 세션이 없습니다."),
+    REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "RV404", "리뷰를 찾을 수 없습니다."),
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "N404", "알림을 찾을 수 없습니다."),
 
     // 409 Conflict
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U409", "이미 사용 중인 이메일입니다."),
@@ -45,6 +50,8 @@ public enum ErrorCode {
     WAITING_SESSION_NOT_ACCEPTING(HttpStatus.CONFLICT, "WS410", "현재 웨이팅을 받을 수 없는 상태입니다."),
     OWNER_ALREADY_EXISTS(HttpStatus.CONFLICT, "RO409", "이미 다른 식당의 점주로 등록된 유저입니다."),
     RESTAURANT_ALREADY_HAS_OWNER(HttpStatus.CONFLICT, "RO410", "이미 점주가 지정된 식당입니다."),
+    REVIEW_NOT_VISITED(HttpStatus.CONFLICT, "RV409", "방문 완료된 예약에 대해서만 리뷰를 작성할 수 있습니다."),
+    REVIEW_ALREADY_EXISTS(HttpStatus.CONFLICT, "RV410", "이미 작성된 리뷰가 있습니다."),
 
     // 500
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "S500", "서버 내부 오류가 발생했습니다.");

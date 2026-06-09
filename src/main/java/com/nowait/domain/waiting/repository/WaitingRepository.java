@@ -16,6 +16,10 @@ public interface WaitingRepository extends JpaRepository<Waiting, Long> {
   /* 점주: 세션의 모든 웨이팅 목록 (번호 오름차순) */
   List<Waiting> findBySessionIdOrderByWaitingNumberAsc(Long sessionId);
 
+  /* 세션의 활성 웨이팅 목록 (번호 오름차순) — 앞 N팀 알림 판별용 */
+  List<Waiting> findBySessionIdAndStatusInOrderByWaitingNumberAsc(
+      Long sessionId, Collection<WaitingStatus> statuses);
+
   /* 사용자: 내 활성 웨이팅 (WAITING/CALLED) — 가장 최근 1건 */
   Optional<Waiting> findFirstByUserIdAndStatusInOrderByRegisteredAtDesc(
       Long userId, Collection<WaitingStatus> statuses);

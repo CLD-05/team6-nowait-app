@@ -49,6 +49,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/api/restaurants/**").permitAll()
                         .requestMatchers("/api/restaurants/*/waiting-session").permitAll()
+                        /* SSE 스트림은 티켓으로 컨트롤러 내부에서 검증 → JWT 필터 우회 */
+                        .requestMatchers("/api/notifications/stream").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
