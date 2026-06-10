@@ -53,15 +53,24 @@ public class Slot extends BaseTimeEntity {
 
     @Column(name = "remain_count", nullable = false)
     private int remainCount;
+    
+    @Column(name = "min_headcount", nullable = true)
+    private int minHeadcount = 1;
+    
+    @Column (name = "max_headcount", nullable = true)
+    private Integer maxHeadcount;
 
     @Builder
-    public Slot(Restaurant restaurant, LocalDate slotDate,
-                LocalTime slotTime, int totalCount) {
+    public Slot(Restaurant restaurant, LocalDate slotDate, LocalTime slotTime,
+    		int totalCount, Integer minHeadcount, Integer maxHeadcount) {
         this.restaurant = restaurant;
         this.slotDate = slotDate;
         this.slotTime = slotTime;
         this.totalCount = totalCount;
         this.remainCount = totalCount;
+     // 📜 값을 안 넣어주면(Null이면) 기본값 1이 들어가도록 안전장치 설정!
+        this.minHeadcount = (minHeadcount != null) ? minHeadcount : 1;
+        this.maxHeadcount = maxHeadcount; // 최대 인원은 없으면 없는 대로 Null 유지
     }
 
     public void decrease() {
@@ -85,5 +94,13 @@ public class Slot extends BaseTimeEntity {
     public void updateTotalCount(int newTotalCount, int diff) {
         this.totalCount = newTotalCount;
         this.remainCount = Math.max(0, this.remainCount + diff);
+    }
+    
+    // 점주가 슬롯 인원 제한을 수정할 때 사용하는 비즈니스 메서드
+    public void updateHeadcountRestrictions(Integer minHeadcount, Integer maxHeadcount) {
+        if (minHeadcount != null) {
+            this.minHeadcount = minHeadcount;
+        }
+        this.maxHeadcount = maxHeadcount; // 최대 인원은 Null로 변경될 수도 있으므로 그대로 갱신
     }
 }

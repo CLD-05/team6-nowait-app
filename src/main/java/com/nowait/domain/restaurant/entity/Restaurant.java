@@ -3,6 +3,7 @@ package com.nowait.domain.restaurant.entity;
 import java.time.LocalTime;
 
 import com.nowait.domain.restaurant.type.RestaurantCategory;
+import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.global.common.BaseTimeEntity;
 
 import jakarta.persistence.Column;
@@ -55,15 +56,6 @@ public class Restaurant extends BaseTimeEntity {
 	@Column(name = "main_menu_name", length = 255)
 	private String mainMenuName;
 	
-	@Column(name = "open_time", nullable = false)
-	private LocalTime openTime;
-	
-	@Column(name = "close_time", nullable = false)
-	private LocalTime closeTime;
-	
-	@Column(name = "closed_days", length = 100)
-	private String closedDays;
-	
 	@Column(name = "parking_available", length = 1)
 	private String parkingAvailable = "N";
 	
@@ -72,6 +64,26 @@ public class Restaurant extends BaseTimeEntity {
 	
 	@Column(name = "multilingual_menu_available", length = 1)
 	private String multilingualMenuAvailable = "N";
+	
+	@Enumerated(EnumType.STRING)
+	@Column(name = "status", nullable = false)
+	private RestaurantStatus status = RestaurantStatus.CLOSED;
+	
+	@Column(name = "reservation_available", nullable = false, columnDefinition = "CHAR(1) DEFAULT 'Y'")
+	private String reservationAvailable = "Y";
+	
+	@Column(name = "waiting_available", nullable = false, columnDefinition = "CHAR(1) DEFAULT 'Y'")
+    private String waitingAvailable = "Y";
+	
+	// 🛎️ 점주가 설정을 바꿀 때 쓸 메서드
+    public void updateAvailableStatus(String reservationAvailable, String waitingAvailable) {
+        this.reservationAvailable = reservationAvailable;
+        this.waitingAvailable = waitingAvailable;
+    }
+	
+	public void updateStatus(RestaurantStatus newStatus) {
+		this.status = newStatus;
+	}
 	
 	public void updateImage(String imageUrl) {
 		this.imageUrl = imageUrl;
@@ -89,9 +101,6 @@ public class Restaurant extends BaseTimeEntity {
 		this.description = description;
 		this.imageUrl = imageUrl;
 		this.mainMenuName = mainMenuName;
-		this.openTime = openTime;
-		this.closeTime = closeTime;
-		this.closedDays = closedDays;
 		this.parkingAvailable = parkingAvailable != null ? parkingAvailable : "N";
 		this.wifiAvailable = wifiAvailable != null ? wifiAvailable : "N";
 		this.multilingualMenuAvailable = multilingualMenuAvailable != null ? multilingualMenuAvailable : "N";

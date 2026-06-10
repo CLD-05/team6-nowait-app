@@ -1,13 +1,15 @@
 package com.nowait.domain.restaurant.dto;
 
-import java.time.LocalTime;
+import java.util.List;
 
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.type.RestaurantCategory;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import lombok.Getter;
 
+@Getter
 public class RestaurantRegisterRequest {
 	
 	@NotBlank(message = "식당 이름은 필수 입력 항목입니다.")
@@ -27,19 +29,13 @@ public class RestaurantRegisterRequest {
 	
 	private String mainMenuName;
 	
-	@NotNull(message = "영업 시작 시간은 필수 입력 항목입니다.")
-	private LocalTime openTime;
-	
-	@NotNull(message = "영업 종료 시간은 필수 입력 항목입니다.")
-	private LocalTime closeTime;
-	
-	private String closedDays;
-	
 	private String parkingAvailable;
 	
 	private String wifiAvailable;
 	
 	private String multilingualMenuAvailable;
+	
+	private List<RestaurantHourRequest> restaurantHours;
 	
 	public Restaurant toEntity(Long ownerId) {
 		return Restaurant.builder()
@@ -50,9 +46,6 @@ public class RestaurantRegisterRequest {
 				.description(this.description)
 				.imageUrl(this.imageUrl)
 				.mainMenuName(this.mainMenuName)
-				.openTime(this.openTime)
-				.closeTime(this.closeTime)
-				.closedDays(this.closedDays)
 				.parkingAvailable(this.parkingAvailable)
 				.wifiAvailable(this.wifiAvailable)
 				.multilingualMenuAvailable(this.multilingualMenuAvailable)
