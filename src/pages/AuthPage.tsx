@@ -4,7 +4,7 @@ import Header from '../components/Header';
 import Logo from '../components/Logo';
 
 const USE_DUMMY = true;
-const API_BASE = '/api/v1';
+import { API_BASE } from '../lib/api';
 
 type AuthTab = 'login' | 'signup';
 type UserRole = 'USER' | 'OWNER';

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import { API_BASE } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 
@@ -94,6 +95,7 @@ function buildDummyRestaurants(): Restaurant[] {
 }
 
 const RESTAURANTS = buildDummyRestaurants();
+const USE_DUMMY = true;
 
 export default function MainPage() {
   const navigate = useNavigate();
@@ -101,6 +103,30 @@ export default function MainPage() {
   const [keyword, setKeyword] = useState('');
   const [appliedKeyword, setAppliedKeyword] = useState('');
   const [page, setPage] = useState(0);
+  const [restaurants2, setRestaurants2] = useState<Restaurant[]>([]);
+  const [_loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (USE_DUMMY) return;
+    fetchRestaurants();
+  }, [category]);
+
+  async function fetchRestaurants() {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(page), size: String(PAGE_SIZE) });
+      if (category) params.append('category', category);
+      const res = await fetch(`${API_BASE}/restaurants?${params}`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      setRestaurants2(data.content || []);
+    } catch (e) {
+      console.error('식당 목록 조회 실패', e);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const filteredRestaurants = useMemo(() => {
     const normalizedKeyword = appliedKeyword.trim();
@@ -117,7 +143,9 @@ export default function MainPage() {
   }, [appliedKeyword, category]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRestaurants.length / PAGE_SIZE));
-  const restaurants = filteredRestaurants.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const restaurants = USE_DUMMY
+    ? filteredRestaurants.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+    : restaurants2;
 
   const handleSearch = () => {
     setPage(0);
