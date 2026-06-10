@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
-import Logo from '../components/Logo';
 
 const USE_DUMMY = true;
 const API_BASE = '/api/v1';
@@ -199,11 +198,30 @@ export default function AuthPage() {
           <div style={{ textAlign: 'center', marginBottom: '26px' }}>
             <div
               style={{
-                display: 'flex',
-                justifyContent: 'center',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px',
+                fontSize: '25px',
+                fontWeight: 900,
+                letterSpacing: '-0.05em',
+                lineHeight: 1.5,
               }}
             >
-              <Logo width="min(190px, 72vw)" />
+              No
+              <span
+                style={{
+                  background: 'var(--tomato)',
+                  color: '#fff',
+                  border: '2.5px solid var(--ink)',
+                  borderRadius: '9px',
+                  padding: '1px 9px',
+                  transform: 'rotate(-3deg)',
+                  boxShadow: '3px 3px 0 var(--ink)',
+                  lineHeight: 1.5,
+                }}
+              >
+                wait
+              </span>
             </div>
             <p style={{ color: 'var(--muted)', fontSize: '14px', fontWeight: 700, marginTop: '8px' }}>
               기다림 없는 외식을 시작하세요

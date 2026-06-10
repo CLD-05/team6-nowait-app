@@ -1,5 +1,4 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import Logo from './Logo';
 
 type StoredUser = {
   role?: 'USER' | 'OWNER';
@@ -59,13 +58,32 @@ export default function Header() {
           style={{
             display: 'inline-flex',
             alignItems: 'center',
+            gap: '3px',
             border: 'none',
             background: 'transparent',
+            color: 'var(--ink)',
+            fontSize: '25px',
+            fontWeight: 900,
+            letterSpacing: '-0.05em',
+            lineHeight: 1.5,
             padding: 0,
-            cursor: 'pointer',
           }}
         >
-          <Logo width="clamp(132px, 14vw, 166px)" />
+          No
+          <span
+            style={{
+              background: 'var(--tomato)',
+              color: '#fff',
+              border: '2.5px solid var(--ink)',
+              borderRadius: '9px',
+              padding: '1px 9px',
+              transform: 'rotate(-3deg)',
+              boxShadow: '3px 3px 0 var(--ink)',
+              lineHeight: 1.5,
+            }}
+          >
+            wait
+          </span>
         </button>
 
         <nav

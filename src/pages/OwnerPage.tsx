@@ -1,11 +1,36 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 
-const USE_DUMMY = true;
-const API_BASE = '/api/v1';
+type SessionStatus = 'OPEN' | 'PAUSED' | 'CLOSED';
+type WaitingStatus = 'WAITING' | 'CALLED' | 'ENTERED' | 'CANCELLED';
+type ReservationStatus = 'CONFIRMED' | 'VISITED' | 'NO_SHOW';
 
-const DUMMY_SESSION = {
+type WaitingSession = {
+  sessionId: number;
+  status: SessionStatus;
+  currentCount: number;
+  maxWaitingCount: number;
+  openedAt: string;
+};
+
+type OwnerWaiting = {
+  waitingId: number;
+  waitingNumber: number;
+  partySize: number;
+  status: WaitingStatus;
+  registeredAt: string;
+};
+
+type OwnerReservation = {
+  reservationId: number;
+  userName: string;
+  slotTime: string;
+  headcount: number;
+  status: ReservationStatus;
+};
+
+const DUMMY_SESSION: WaitingSession = {
   sessionId: 1,
   status: 'OPEN',
   currentCount: 7,
@@ -13,7 +38,7 @@ const DUMMY_SESSION = {
   openedAt: '2026-06-08 11:00',
 };
 
-const DUMMY_WAITINGS = [
+const DUMMY_WAITINGS: OwnerWaiting[] = [
   { waitingId: 1, waitingNumber: 1, partySize: 2, status: 'WAITING', registeredAt: '11:05' },
   { waitingId: 2, waitingNumber: 2, partySize: 4, status: 'CALLED', registeredAt: '11:10' },
   { waitingId: 3, waitingNumber: 3, partySize: 2, status: 'WAITING', registeredAt: '11:15' },
@@ -21,295 +46,401 @@ const DUMMY_WAITINGS = [
   { waitingId: 5, waitingNumber: 5, partySize: 2, status: 'WAITING', registeredAt: '11:25' },
 ];
 
-const DUMMY_RESERVATIONS = [
+const DUMMY_RESERVATIONS: OwnerReservation[] = [
   { reservationId: 1, userName: '김철수', slotTime: '12:00', headcount: 2, status: 'CONFIRMED' },
   { reservationId: 2, userName: '이영희', slotTime: '12:30', headcount: 4, status: 'CONFIRMED' },
   { reservationId: 3, userName: '박민준', slotTime: '13:00', headcount: 2, status: 'VISITED' },
-  { reservationId: 4, userName: '최지은', slotTime: '13:30', headcount: 3, status: 'NO_SHOW' },
+  { reservationId: 4, userName: '최지우', slotTime: '13:30', headcount: 3, status: 'NO_SHOW' },
 ];
 
-const STATUS_COLOR: Record<string, { bg: string; color: string }> = {
-  WAITING: { bg: '#EFF6FF', color: '#2563EB' },
-  CALLED: { bg: '#FFF3EF', color: '#FF5722' },
-  ENTERED: { bg: '#F0FDF4', color: '#16A34A' },
-  CANCELLED: { bg: '#F5F5F5', color: '#9E9E9E' },
-  CONFIRMED: { bg: '#EFF6FF', color: '#2563EB' },
-  VISITED: { bg: '#F0FDF4', color: '#16A34A' },
-  NO_SHOW: { bg: '#FFF0F0', color: '#D32F2F' },
+const STATUS_LABEL: Record<SessionStatus | WaitingStatus | ReservationStatus, string> = {
+  OPEN: '운영중',
+  PAUSED: '일시정지',
+  CLOSED: '마감',
+  WAITING: '대기중',
+  CALLED: '호출됨',
+  ENTERED: '입장 완료',
+  CANCELLED: '취소',
+  CONFIRMED: '예약 확정',
+  VISITED: '방문 완료',
+  NO_SHOW: '노쇼',
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  WAITING: '대기중', CALLED: '호출됨', ENTERED: '입장완료', CANCELLED: '취소',
-  CONFIRMED: '예약확정', VISITED: '방문완료', NO_SHOW: '노쇼',
+const STATUS_CLASS: Record<WaitingStatus | ReservationStatus, string> = {
+  WAITING: 'tag-waiting',
+  CALLED: 'tag-called',
+  ENTERED: 'tag-entered',
+  CANCELLED: 'tag-cancelled',
+  CONFIRMED: 'tag-confirmed',
+  VISITED: 'tag-visited',
+  NO_SHOW: 'tag-noshow',
 };
 
 export default function OwnerPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<'waiting' | 'reservation'>('waiting');
-  const [session, setSession] = useState<any>(null);
-  const [waitings, setWaitings] = useState<any[]>([]);
-  const [reservations, setReservations] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [session, setSession] = useState<WaitingSession>(DUMMY_SESSION);
+  const [waitings, setWaitings] = useState<OwnerWaiting[]>(DUMMY_WAITINGS);
+  const [reservations, setReservations] = useState<OwnerReservation[]>(DUMMY_RESERVATIONS);
 
   useEffect(() => {
-    // OWNER 권한 체크
-    const user = JSON.parse(localStorage.getItem('nowait_user') || '{}');
-    const token = localStorage.getItem('nowait_token');
-    if (!token) { navigate('/auth'); return; }
-    // 더미 모드에서는 권한 체크 스킵
-    if (!USE_DUMMY && user.role !== 'OWNER') { navigate('/'); return; }
-    fetchData();
-  }, []);
+    if (!localStorage.getItem('nowait_token')) navigate('/auth');
+  }, [navigate]);
 
-  async function fetchData() {
-    setLoading(true);
-    try {
-      if (USE_DUMMY) {
-        await new Promise(r => setTimeout(r, 300));
-        setSession(DUMMY_SESSION);
-        setWaitings(DUMMY_WAITINGS);
-        setReservations(DUMMY_RESERVATIONS);
-      } else {
-        const token = localStorage.getItem('nowait_token');
-        const headers = { Authorization: `Bearer ${token}` };
-        // 실제 API 호출 시 restaurantId 필요
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
+  const activeWaitings = useMemo(
+    () => waitings.filter(waiting => waiting.status !== 'CANCELLED'),
+    [waitings],
+  );
+  const progress = Math.min(100, Math.round((session.currentCount / session.maxWaitingCount) * 100));
 
-  // 세션 상태 변경
-  async function changeSessionStatus(action: 'pause' | 'resume' | 'close') {
+  function changeSessionStatus(action: 'pause' | 'resume' | 'close') {
     const actionLabel = { pause: '일시정지', resume: '재개', close: '마감' }[action];
     if (!confirm(`웨이팅을 ${actionLabel}하시겠어요?`)) return;
-    if (USE_DUMMY) {
-      const statusMap = { pause: 'PAUSED', resume: 'OPEN', close: 'CLOSED' };
-      setSession((prev: any) => ({ ...prev, status: statusMap[action] }));
-    } else {
-      const token = localStorage.getItem('nowait_token');
-      await fetch(`${API_BASE}/owner/waiting/sessions/${session.sessionId}/${action}`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      fetchData();
-    }
+
+    const statusMap: Record<typeof action, SessionStatus> = {
+      pause: 'PAUSED',
+      resume: 'OPEN',
+      close: 'CLOSED',
+    };
+
+    setSession(current => ({ ...current, status: statusMap[action] }));
   }
 
-  // 웨이팅 호출
-  async function callWaiting(waitingId: number) {
-    if (USE_DUMMY) {
-      setWaitings(prev => prev.map(w => w.waitingId === waitingId ? { ...w, status: 'CALLED' } : w));
-    } else {
-      const token = localStorage.getItem('nowait_token');
-      await fetch(`${API_BASE}/owner/waiting/${waitingId}/call`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      fetchData();
-    }
+  function callWaiting(waitingId: number) {
+    setWaitings(current =>
+      current.map(waiting => (waiting.waitingId === waitingId ? { ...waiting, status: 'CALLED' } : waiting)),
+    );
   }
 
-  // 웨이팅 입장 처리
-  async function enterWaiting(waitingId: number) {
-    if (USE_DUMMY) {
-      setWaitings(prev => prev.map(w => w.waitingId === waitingId ? { ...w, status: 'ENTERED' } : w));
-      setSession((prev: any) => ({ ...prev, currentCount: Math.max(0, prev.currentCount - 1) }));
-    } else {
-      const token = localStorage.getItem('nowait_token');
-      await fetch(`${API_BASE}/owner/waiting/${waitingId}/enter`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      fetchData();
-    }
+  function enterWaiting(waitingId: number) {
+    setWaitings(current =>
+      current.map(waiting => (waiting.waitingId === waitingId ? { ...waiting, status: 'ENTERED' } : waiting)),
+    );
+    setSession(current => ({ ...current, currentCount: Math.max(0, current.currentCount - 1) }));
   }
 
-  // 방문 완료
-  async function markVisited(reservationId: number) {
-    if (USE_DUMMY) {
-      setReservations(prev => prev.map(r => r.reservationId === reservationId ? { ...r, status: 'VISITED' } : r));
-    } else {
-      const token = localStorage.getItem('nowait_token');
-      await fetch(`${API_BASE}/owner/reservations/${reservationId}/visit`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      fetchData();
-    }
+  function markVisited(reservationId: number) {
+    setReservations(current =>
+      current.map(reservation =>
+        reservation.reservationId === reservationId ? { ...reservation, status: 'VISITED' } : reservation,
+      ),
+    );
   }
 
-  // 노쇼 처리
-  async function markNoShow(reservationId: number) {
-    if (USE_DUMMY) {
-      setReservations(prev => prev.map(r => r.reservationId === reservationId ? { ...r, status: 'NO_SHOW' } : r));
-    } else {
-      const token = localStorage.getItem('nowait_token');
-      await fetch(`${API_BASE}/owner/reservations/${reservationId}/noshow`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      fetchData();
-    }
+  function markNoShow(reservationId: number) {
+    setReservations(current =>
+      current.map(reservation =>
+        reservation.reservationId === reservationId ? { ...reservation, status: 'NO_SHOW' } : reservation,
+      ),
+    );
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--cream)' }}>
       <Header />
 
-      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '32px 20px 60px' }}>
+      <main className="container" style={{ padding: '34px 26px 76px' }}>
+        <section
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))',
+            gap: '22px',
+            alignItems: 'stretch',
+            marginBottom: '24px',
+          }}
+        >
+          <div
+            className="card-base"
+            style={{
+              background: 'var(--tomato)',
+              color: '#fff',
+              padding: '28px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '18px',
+            }}
+          >
+            <div>
+              <span
+                className="badge badge-amber"
+                style={{
+                  color: 'var(--ink)',
+                  boxShadow: '3px 3px 0 var(--ink)',
+                }}
+              >
+                OWNER DASHBOARD
+              </span>
+              <h1
+                style={{
+                  fontSize: 'clamp(30px, 4.6vw, 50px)',
+                  fontWeight: 900,
+                  letterSpacing: '-0.05em',
+                  lineHeight: 1.06,
+                  marginTop: '14px',
+                }}
+              >
+                오늘의 예약과
+                <br />
+                웨이팅을 관리하세요.
+              </h1>
+            </div>
+            <p style={{ fontSize: '15px', fontWeight: 800, opacity: 0.92 }}>
+              호출, 입장, 방문 완료, 노쇼 처리까지 한 화면에서 빠르게 진행할 수 있습니다.
+            </p>
+          </div>
 
-        {/* 타이틀 */}
-        <div style={{ marginBottom: '24px' }}>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800 }}>🏪 점주 대시보드</h1>
-          <p style={{ color: 'var(--text-sub)', fontSize: '0.88rem', marginTop: '4px' }}>오늘의 예약과 웨이팅을 관리하세요</p>
-        </div>
-
-        {/* 웨이팅 세션 카드 */}
-        {session && (
-          <div style={{ background: '#fff', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow)', padding: '24px', marginBottom: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+          <div className="card-base" style={{ background: '#fff', padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
               <div>
-                <div style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '4px' }}>웨이팅 세션</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 600, padding: '3px 10px', borderRadius: '50px', background: session.status === 'OPEN' ? '#F0FDF4' : session.status === 'PAUSED' ? '#FFF3EF' : '#F5F5F5', color: session.status === 'OPEN' ? '#16A34A' : session.status === 'PAUSED' ? '#FF5722' : '#9E9E9E' }}>
-                    {session.status === 'OPEN' ? '● 운영중' : session.status === 'PAUSED' ? '⏸ 일시정지' : '■ 마감'}
-                  </span>
-                  <span style={{ fontSize: '0.86rem', color: 'var(--text-sub)' }}>
-                    {session.currentCount} / {session.maxWaitingCount}팀
-                  </span>
+                <span className="kicker">WAITING SESSION</span>
+                <h2 style={{ fontSize: '24px', fontWeight: 900, letterSpacing: '-0.04em' }}>
+                  웨이팅 세션
+                </h2>
+              </div>
+              <span
+                className={`tag ${
+                  session.status === 'OPEN'
+                    ? 'tag-open'
+                    : session.status === 'PAUSED'
+                      ? 'tag-called'
+                      : 'tag-cancelled'
+                }`}
+              >
+                {STATUS_LABEL[session.status]}
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'end',
+                justifyContent: 'space-between',
+                marginTop: '22px',
+                gap: '10px',
+              }}
+            >
+              <div>
+                <div style={{ color: 'var(--muted)', fontSize: '13px', fontWeight: 900 }}>현재 대기</div>
+                <div style={{ color: 'var(--tomato)', fontSize: '58px', fontWeight: 900, lineHeight: 1 }}>
+                  {session.currentCount}
                 </div>
               </div>
-
-              {/* 세션 제어 버튼 */}
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {session.status === 'OPEN' && (
-                  <button onClick={() => changeSessionStatus('pause')}
-                    style={{ padding: '8px 14px', border: '1.5px solid var(--primary)', borderRadius: 'var(--radius-sm)', background: '#fff', color: 'var(--primary)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
-                    ⏸ 일시정지
-                  </button>
-                )}
-                {session.status === 'PAUSED' && (
-                  <button onClick={() => changeSessionStatus('resume')}
-                    style={{ padding: '8px 14px', border: '1.5px solid #16A34A', borderRadius: 'var(--radius-sm)', background: '#fff', color: '#16A34A', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
-                    ▶ 재개
-                  </button>
-                )}
-                {session.status !== 'CLOSED' && (
-                  <button onClick={() => changeSessionStatus('close')}
-                    style={{ padding: '8px 14px', border: '1.5px solid #D32F2F', borderRadius: 'var(--radius-sm)', background: '#fff', color: '#D32F2F', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
-                    ■ 마감
-                  </button>
-                )}
+              <div style={{ color: 'var(--muted)', fontSize: '14px', fontWeight: 800, textAlign: 'right' }}>
+                최대 {session.maxWaitingCount}팀
+                <br />
+                시작 {session.openedAt}
               </div>
             </div>
 
-            {/* 대기 현황 바 */}
-            <div style={{ background: 'var(--bg)', borderRadius: '50px', height: '8px', overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: 'var(--primary)', borderRadius: '50px', width: `${(session.currentCount / session.maxWaitingCount) * 100}%`, transition: 'width 0.3s' }} />
+            <div
+              style={{
+                height: '14px',
+                background: 'var(--cream)',
+                border: '2.5px solid var(--ink)',
+                borderRadius: '999px',
+                overflow: 'hidden',
+                marginTop: '16px',
+              }}
+            >
+              <div
+                style={{
+                  width: `${progress}%`,
+                  height: '100%',
+                  background: 'var(--amber)',
+                  transition: 'width .2s ease',
+                }}
+              />
             </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-sub)', marginTop: '6px', textAlign: 'right' }}>
-              최대 {session.maxWaitingCount}팀
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '20px' }}>
+              {session.status === 'OPEN' && (
+                <button type="button" className="btn btn-white btn-sm" onClick={() => changeSessionStatus('pause')}>
+                  일시정지
+                </button>
+              )}
+              {session.status === 'PAUSED' && (
+                <button type="button" className="btn btn-amber btn-sm" onClick={() => changeSessionStatus('resume')}>
+                  재개
+                </button>
+              )}
+              {session.status !== 'CLOSED' && (
+                <button
+                  type="button"
+                  className="btn btn-white btn-sm"
+                  onClick={() => changeSessionStatus('close')}
+                  style={{ color: 'var(--tomato)' }}
+                >
+                  마감
+                </button>
+              )}
             </div>
           </div>
-        )}
+        </section>
 
-        {/* 탭 */}
-        <div style={{ display: 'flex', background: '#fff', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow)', overflow: 'hidden', marginBottom: '20px' }}>
-          {(['waiting', 'reservation'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              style={{ flex: 1, padding: '16px', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.95rem', transition: 'all 0.15s', background: tab === t ? 'var(--primary)' : '#fff', color: tab === t ? '#fff' : 'var(--text-sub)' }}>
-              {t === 'waiting' ? '⏳ 웨이팅 관리' : '📋 예약 관리'}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '8px',
+            background: '#fff',
+            border: '3px solid var(--ink)',
+            borderRadius: '22px',
+            boxShadow: '5px 5px 0 var(--ink)',
+            padding: '7px',
+            marginBottom: '22px',
+          }}
+        >
+          {(['waiting', 'reservation'] as const).map(item => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setTab(item)}
+              className={`btn ${tab === item ? 'btn-tomato' : 'btn-white'} btn-sm`}
+            >
+              {item === 'waiting' ? '웨이팅 관리' : '예약 관리'}
             </button>
           ))}
         </div>
 
-        {loading && <div className="spinner" />}
-
-        {/* 웨이팅 관리 탭 */}
-        {!loading && tab === 'waiting' && (
-          <div>
-            {waitings.filter(w => w.status !== 'CANCELLED').length === 0 ? (
-              <div className="empty-state"><div className="icon">⏳</div><p>대기 중인 손님이 없어요</p></div>
+        {tab === 'waiting' && (
+          <section>
+            {activeWaitings.length === 0 ? (
+              <div className="empty-state card-base" style={{ background: '#fff' }}>
+                <p>대기 중인 손님이 없습니다.</p>
+              </div>
             ) : (
-              waitings.filter(w => w.status !== 'CANCELLED').map(w => (
-                <div key={w.waitingId} style={{ background: '#fff', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow)', padding: '20px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', fontWeight: 800, color: 'var(--primary)', flexShrink: 0 }}>
-                      {w.waitingNumber}
+              <div style={{ display: 'grid', gap: '14px' }}>
+                {activeWaitings.map(waiting => (
+                  <article
+                    key={waiting.waitingId}
+                    className="card-base"
+                    style={{
+                      background: '#fff',
+                      padding: '20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '16px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
+                      <div
+                        style={{
+                          width: '56px',
+                          height: '56px',
+                          borderRadius: '18px',
+                          background: 'var(--amber)',
+                          border: '2.5px solid var(--ink)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '22px',
+                          fontWeight: 900,
+                          boxShadow: '3px 3px 0 var(--ink)',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {waiting.waitingNumber}
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <h3 style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '-0.04em' }}>
+                            {waiting.waitingNumber}번 손님
+                          </h3>
+                          <span className={`tag ${STATUS_CLASS[waiting.status]}`}>
+                            {STATUS_LABEL[waiting.status]}
+                          </span>
+                        </div>
+                        <p style={{ color: 'var(--muted)', fontSize: '14px', fontWeight: 700, marginTop: '6px' }}>
+                          {waiting.partySize}명 · {waiting.registeredAt} 등록
+                        </p>
+                      </div>
                     </div>
+
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {waiting.status === 'WAITING' && (
+                        <button type="button" className="btn btn-tomato btn-sm" onClick={() => callWaiting(waiting.waitingId)}>
+                          호출
+                        </button>
+                      )}
+                      {waiting.status === 'CALLED' && (
+                        <button type="button" className="btn btn-amber btn-sm" onClick={() => enterWaiting(waiting.waitingId)}>
+                          입장
+                        </button>
+                      )}
+                      {waiting.status === 'ENTERED' && <span className="tag tag-entered">처리 완료</span>}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {tab === 'reservation' && (
+          <section>
+            {reservations.length === 0 ? (
+              <div className="empty-state card-base" style={{ background: '#fff' }}>
+                <p>오늘 예약이 없습니다.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: '14px' }}>
+                {reservations.map(reservation => (
+                  <article
+                    key={reservation.reservationId}
+                    className="card-base"
+                    style={{
+                      background: '#fff',
+                      padding: '20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '16px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <span style={{ fontWeight: 700 }}>{w.waitingNumber}번</span>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: '50px', background: STATUS_COLOR[w.status]?.bg, color: STATUS_COLOR[w.status]?.color }}>
-                          {STATUS_LABEL[w.status]}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <h3 style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '-0.04em' }}>
+                          {reservation.userName}
+                        </h3>
+                        <span className={`tag ${STATUS_CLASS[reservation.status]}`}>
+                          {STATUS_LABEL[reservation.status]}
                         </span>
                       </div>
-                      <div style={{ fontSize: '0.84rem', color: 'var(--text-sub)' }}>
-                        👥 {w.partySize}명 · 🕐 {w.registeredAt} 등록
-                      </div>
+                      <p style={{ color: 'var(--muted)', fontSize: '14px', fontWeight: 700, marginTop: '6px' }}>
+                        {reservation.slotTime} · {reservation.headcount}명
+                      </p>
                     </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    {w.status === 'WAITING' && (
-                      <button onClick={() => callWaiting(w.waitingId)}
-                        style={{ padding: '8px 14px', border: '1.5px solid var(--primary)', borderRadius: 'var(--radius-sm)', background: 'var(--primary-light)', color: 'var(--primary)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
-                        📣 호출
-                      </button>
-                    )}
-                    {w.status === 'CALLED' && (
-                      <button onClick={() => enterWaiting(w.waitingId)}
-                        style={{ padding: '8px 14px', border: '1.5px solid #16A34A', borderRadius: 'var(--radius-sm)', background: '#F0FDF4', color: '#16A34A', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
-                        ✅ 입장
-                      </button>
-                    )}
-                    {w.status === 'ENTERED' && (
-                      <span style={{ fontSize: '0.82rem', color: '#16A34A', fontWeight: 600 }}>입장완료</span>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
 
-        {/* 예약 관리 탭 */}
-        {!loading && tab === 'reservation' && (
-          <div>
-            {reservations.length === 0 ? (
-              <div className="empty-state"><div className="icon">📋</div><p>오늘 예약이 없어요</p></div>
-            ) : (
-              reservations.map(r => (
-                <div key={r.reservationId} style={{ background: '#fff', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow)', padding: '20px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                      <span style={{ fontWeight: 700 }}>{r.userName}</span>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: '50px', background: STATUS_COLOR[r.status]?.bg, color: STATUS_COLOR[r.status]?.color }}>
-                        {STATUS_LABEL[r.status]}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '0.84rem', color: 'var(--text-sub)' }}>
-                      🕐 {r.slotTime} · 👥 {r.headcount}명
-                    </div>
-                  </div>
-                  {r.status === 'CONFIRMED' && (
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => markVisited(r.reservationId)}
-                        style={{ padding: '8px 14px', border: '1.5px solid #16A34A', borderRadius: 'var(--radius-sm)', background: '#F0FDF4', color: '#16A34A', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
-                        ✅ 방문완료
-                      </button>
-                      <button onClick={() => markNoShow(r.reservationId)}
-                        style={{ padding: '8px 14px', border: '1.5px solid #D32F2F', borderRadius: 'var(--radius-sm)', background: '#FFF0F0', color: '#D32F2F', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
-                        ❌ 노쇼
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
+                    {reservation.status === 'CONFIRMED' && (
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn-amber btn-sm"
+                          onClick={() => markVisited(reservation.reservationId)}
+                        >
+                          방문 완료
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-white btn-sm"
+                          onClick={() => markNoShow(reservation.reservationId)}
+                          style={{ color: 'var(--tomato)' }}
+                        >
+                          노쇼
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
             )}
-          </div>
+          </section>
         )}
-      </div>
+      </main>
     </div>
   );
 }
