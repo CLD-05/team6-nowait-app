@@ -7,6 +7,7 @@ import com.nowait.domain.reservation.repository.ReservationRepository;
 import com.nowait.domain.reservation.type.ReservationStatus;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
+import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.slot.entity.Slot;
 import com.nowait.domain.slot.repository.SlotRepository;
 import com.nowait.domain.user.entity.User;
@@ -46,6 +47,23 @@ public class ReservationService {
 
         Slot slot = slotRepository.findById(request.slotId())
             .orElseThrow(() -> new BusinessException(ErrorCode.SLOT_NOT_FOUND));
+        
+        if (restaurant.getStatus() != RestaurantStatus.OPEN) {
+        	throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
+        }
+        
+        if ("N".equals(restaurant.getReservationAvailable())) {
+        	throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
+        }
+        
+        // 해당 타임 슬롯의 최소/최대 인원수 검증
+        int headcount = request.headcount(); // Record 문법 구조에 맞춰 request.headcount()로 호출!
+        if (headcount < slot.getMinHeadcount()) {
+            throw new BusinessException(ErrorCode.INVALID_MIN_HEADCOUNT);
+        }
+        if (slot.getMaxHeadcount() != null && headcount > slot.getMaxHeadcount()) {
+            throw new BusinessException(ErrorCode.INVALID_MAX_HEADCOUNT);
+        }
 
         // 슬롯 마감 여부 확인
         if (slot.getRemainCount() <= 0) {

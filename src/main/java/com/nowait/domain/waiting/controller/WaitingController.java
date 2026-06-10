@@ -57,13 +57,16 @@ public class WaitingController {
   }
 
   /* 점주: 호출 (토큰 기반) */
-  @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting/{token}/call")
-  public ResponseEntity<WaitingResponse> call(
-      @PathVariable String token,
-      @AuthenticationPrincipal CustomUserDetails principal) {
-    return ResponseEntity.ok(waitingService.call(token, principal.getUserId()));
-  }
+@PreAuthorize("hasRole('OWNER')")
+@PatchMapping(value = {
+    "/api/owners/waiting/{token}/call",
+    "/api/owners/waiting/{token}/recall"
+})
+public ResponseEntity<WaitingResponse> call(
+    @PathVariable String token,
+    @AuthenticationPrincipal CustomUserDetails principal) {
+  return ResponseEntity.ok(waitingService.call(token, principal.getUserId()));
+}
 
   /* 점주: 취소 처리 (토큰 기반) */
   @PreAuthorize("hasRole('OWNER')")

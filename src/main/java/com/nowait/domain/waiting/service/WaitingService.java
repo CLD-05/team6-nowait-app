@@ -1,17 +1,35 @@
 package com.nowait.domain.waiting.service;
 
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nowait.domain.notification.service.NotificationService;
 import com.nowait.domain.notification.type.NotificationType;
 import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
+import com.nowait.domain.restaurant.type.RestaurantStatus;
+import com.nowait.domain.waiting.dto.WaitingCallLogResponse;
 import com.nowait.domain.waiting.dto.WaitingRegisterRequest;
 import com.nowait.domain.waiting.dto.WaitingResponse;
 import com.nowait.domain.waiting.entity.WaitingSession;
 import com.nowait.domain.waiting.redis.WaitingRedisLuaExecutor;
 import com.nowait.domain.waiting.redis.WaitingTokenData;
+import com.nowait.domain.waiting.entity.Waiting;
+import com.nowait.domain.waiting.entity.WaitingCallLog;
+import com.nowait.domain.waiting.entity.WaitingSession;
+import com.nowait.domain.waiting.repository.WaitingCallLogRepository;
+import com.nowait.domain.waiting.repository.WaitingRedisRepository;
+import com.nowait.domain.waiting.repository.WaitingRepository;
+import com.nowait.domain.waiting.type.WaitingStatus;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,6 +50,7 @@ import java.util.Objects;
  *   - 사용자/점주 모두 waitingToken (UUID) 으로 후속 액션 호출
  *   - waitingId 는 Worker 가 RDS INSERT 한 후에야 존재 → API 흐름에서는 사용 X
  */
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -39,10 +58,12 @@ import java.util.Objects;
 public class WaitingService {
 
   private static final int NEAR_CALL_THRESHOLD = 5;
-
+  
   private final WaitingSessionService waitingSessionService;
   private final RestaurantOwnerRepository restaurantOwnerRepository;
   private final RestaurantRepository restaurantRepository;
+  private final WaitingRepository waitingRepository;
+  private final WaitingCallLogRepository waitingCallLogRepository;
   private final WaitingRedisLuaExecutor waitingRedis;
   private final NotificationService notificationService;
 
@@ -55,12 +76,24 @@ public class WaitingService {
   @Transactional
   public WaitingResponse register(Long restaurantId, Long loginUserId,
       WaitingRegisterRequest request) {
+
+    Restaurant restaurant = restaurantRepository.findById(restaurantId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+
+    if (restaurant.getStatus() != RestaurantStatus.OPEN) {
+      throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
+    }
+    if ("N".equals(restaurant.getWaitingAvailable())) {
+      throw new BusinessException(ErrorCode.WAITING_NOT_AVAILABLE);
+    }
+
     WaitingSession session = waitingSessionService.findSessionOrThrow(
         findTodaySessionId(restaurantId));
 
     if (!session.getStatus().canAcceptWaiting()) {
       throw new BusinessException(ErrorCode.WAITING_SESSION_NOT_ACCEPTING);
     }
+    
 
     /* Lua 가 6개 키 원자 처리 — 중복/한도/채번/큐/Hash/사용자맵/Worker큐 */
     WaitingRedisLuaExecutor.RegisterResult result = waitingRedis.register(
@@ -146,6 +179,34 @@ public class WaitingService {
     verifyOwnership(data.restaurantId(), loginUserId);
 
     waitingRedis.call(token);
+
+    /* 호출 로그 INSERT — DB 행 존재 시에만 (Worker 가 아직 sync 안 했을 수 있음) */
+    waitingRepository.findByWaitingToken(token).ifPresent(waiting -> {
+      LocalDateTime now = LocalDateTime.now();
+      int sequence = waitingCallLogRepository.countByWaiting(waiting) + 1;
+      waitingCallLogRepository.save(
+          WaitingCallLog.builder()
+              .waiting(waiting)
+              .callSequence(sequence)
+              .calledAt(now)
+              .build()
+      );
+    });
+
+    
+    /* 호출 알림 */
+    String restaurantName = getRestaurantName(data.restaurantId());
+    notificationService.notify(
+        data.userId(),
+        NotificationType.WAITING_CALLED,
+        restaurantName + " 입장해주세요!"
+    );
+
+    log.info("Waiting called. token={}", token);
+
+    WaitingTokenData updated = waitingRedis.findByToken(token);
+    return WaitingResponse.of(token, updated == null ? data : updated);
+  }
 
     /* 호출 알림 (트랜잭션 격리 없이 그대로 — Redis 라 트랜잭션 개념 없음) */
     String restaurantName = getRestaurantName(data.restaurantId());
@@ -246,5 +307,24 @@ public class WaitingService {
     return restaurantRepository.findById(restaurantId)
         .map(Restaurant::getName)
         .orElse("매장");
+  }
+
+
+  /* 점주: 호출 이력 조회 */
+  public List<WaitingCallLogResponse> getCallLogs(Long waitingId, Long loginUserId) {
+    Waiting waiting = findWaitingOrThrow(waitingId);
+    verifyOwnership(waiting.getRestaurantId(), loginUserId);
+
+    List<WaitingCallLog> logs =
+        waitingCallLogRepository.findAllByWaitingOrderByCallSequenceAsc(waiting);
+
+    return logs.stream()
+        .map(WaitingCallLogResponse::new)
+        .toList();
+  }
+
+  private Waiting findWaitingOrThrow(Long waitingId) {
+    return waitingRepository.findById(waitingId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.WAITING_NOT_FOUND));
   }
 }

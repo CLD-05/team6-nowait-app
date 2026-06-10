@@ -55,6 +55,8 @@ public class SlotService {
             .slotDate(request.getSlotDate())
             .slotTime(request.getSlotTime())
             .totalCount(request.getTotalCount())
+            .minHeadcount(request.getMinHeadcount())
+            .maxHeadcount(request.getMaxHeadcount())
             .build();
 
         return SlotResponse.SlotInfo.from(slotRepository.save(slot));
@@ -70,7 +72,8 @@ public class SlotService {
 
         int diff = request.getTotalCount() - slot.getTotalCount();
         slot.updateTotalCount(request.getTotalCount(), diff);
-
+        
+        slot.updateHeadcountRestrictions(request.getMinHeadcount(), request.getMaxHeadcount());
         return SlotResponse.SlotInfo.from(slot);
     }
 
