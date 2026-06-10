@@ -24,7 +24,6 @@ import com.nowait.domain.waiting.entity.Waiting;
 import com.nowait.domain.waiting.entity.WaitingCallLog;
 import com.nowait.domain.waiting.entity.WaitingSession;
 import com.nowait.domain.waiting.repository.WaitingCallLogRepository;
-import com.nowait.domain.waiting.repository.WaitingRedisRepository;
 import com.nowait.domain.waiting.repository.WaitingRepository;
 import com.nowait.domain.waiting.type.WaitingStatus;
 import com.nowait.global.exception.BusinessException;
