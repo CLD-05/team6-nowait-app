@@ -41,4 +41,16 @@ public final class WaitingRedisKeys {
 
   /* Worker 동기화 큐 (전역) */
   public static final String PENDING_SYNC = "waiting:pending-sync";
+
+  /*
+   * Worker 가 RPOPLPUSH 로 pending-sync → processing 으로 옮긴 후 처리.
+   * 처리 완료 시 LREM 으로 제거. 처리 중 죽으면 다음 부팅 시 여기서 복구 가능.
+   */
+  public static final String PROCESSING = "waiting:processing";
+
+  /* 처리에 N 회 이상 실패한 메시지 격리 (운영자 수동 점검 필요) */
+  public static final String DEAD_LETTER = "waiting:dead-letter";
+
+  /* 활성 세션 ID 목록 (Worker 의 CALLED 타임아웃 스캔용) */
+  public static final String ACTIVE_SESSIONS = "waiting:active-sessions";
 }

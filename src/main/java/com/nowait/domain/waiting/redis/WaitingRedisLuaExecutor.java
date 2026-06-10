@@ -186,21 +186,34 @@ public class WaitingRedisLuaExecutor {
 
   // --------- 세션 / 사용자 단위 헬퍼 ---------
 
-  /* 세션 오픈 시 카운터 초기화 */
+  /* 세션 오픈 시 카운터 초기화 + 활성 세션 등록 (Worker 스캔용) */
   public void initSession(Long sessionId) {
     redisTemplate.opsForValue().set(
         WaitingRedisKeys.nextNumber(sessionId), "0", SESSION_TTL);
     redisTemplate.opsForValue().set(
         WaitingRedisKeys.count(sessionId), "0", SESSION_TTL);
+    redisTemplate.opsForSet().add(
+        WaitingRedisKeys.ACTIVE_SESSIONS, String.valueOf(sessionId));
   }
 
-  /* 세션 마감 시 키 정리 */
+  /* 세션 마감 시 키 정리 + 활성 세션 해제 */
   public void clearSession(Long sessionId) {
     redisTemplate.delete(List.of(
         WaitingRedisKeys.nextNumber(sessionId),
         WaitingRedisKeys.count(sessionId),
         WaitingRedisKeys.queue(sessionId)
     ));
+    redisTemplate.opsForSet().remove(
+        WaitingRedisKeys.ACTIVE_SESSIONS, String.valueOf(sessionId));
+  }
+
+  /* Worker 의 타임아웃 스캔용 — 모든 활성 세션 ID */
+  public List<Long> listActiveSessionIds() {
+    Set<String> raw = redisTemplate.opsForSet().members(WaitingRedisKeys.ACTIVE_SESSIONS);
+    if (raw == null || raw.isEmpty()) return Collections.emptyList();
+    List<Long> ids = new ArrayList<>(raw.size());
+    for (String s : raw) ids.add(Long.valueOf(s));
+    return ids;
   }
 
   /* 현재 대기 팀 수 */

@@ -52,6 +52,7 @@ public class WaitingService {
    * 사용자: 웨이팅 등록
    * POST /api/restaurants/{restaurantId}/waitings
    */
+  @Transactional
   public WaitingResponse register(Long restaurantId, Long loginUserId,
       WaitingRegisterRequest request) {
     WaitingSession session = waitingSessionService.findSessionOrThrow(
@@ -101,6 +102,7 @@ public class WaitingService {
    * 사용자: 본인 웨이팅 취소
    * PATCH /api/waitings/{token}/cancel
    */
+  @Transactional
   public WaitingResponse cancelByUser(String token, Long loginUserId) {
     WaitingTokenData data = findTokenDataOrThrow(token);
 
@@ -138,6 +140,7 @@ public class WaitingService {
    * 점주: 호출 (WAITING → CALLED)
    * PATCH /api/owners/waiting/{token}/call
    */
+  @Transactional
   public WaitingResponse call(String token, Long loginUserId) {
     WaitingTokenData data = findTokenDataOrThrow(token);
     verifyOwnership(data.restaurantId(), loginUserId);
@@ -162,6 +165,7 @@ public class WaitingService {
    * 점주: 취소 처리 (WAITING/CALLED → CANCELLED)
    * PATCH /api/owners/waiting/{token}/cancelled
    */
+  @Transactional
   public WaitingResponse cancelByOwner(String token, Long loginUserId) {
     WaitingTokenData data = findTokenDataOrThrow(token);
     verifyOwnership(data.restaurantId(), loginUserId);
@@ -180,6 +184,7 @@ public class WaitingService {
    * PATCH /api/owners/waiting/{token}/enter
    * PATCH /api/owners/waiting/{token}/entered
    */
+  @Transactional
   public WaitingResponse markEntered(String token, Long loginUserId) {
     WaitingTokenData data = findTokenDataOrThrow(token);
     verifyOwnership(data.restaurantId(), loginUserId);
@@ -191,20 +196,6 @@ public class WaitingService {
 
     WaitingTokenData updated = waitingRedis.findByToken(token);
     return WaitingResponse.of(token, updated == null ? data : updated);
-  }
-
-  /* ================== 스케줄러 ================== */
-
-  /*
-   * 스케줄러: CALLED 후 타임아웃 자동 취소
-   *
-   * 현재 Phase 2 에서는 stub. Phase 3 (Worker) 에서 Redis 기반으로 재구현 예정.
-   * (모든 활성 세션의 CALLED 토큰을 calledAt 기준으로 스캔해야 하므로
-   *  비용이 큰 작업 — Worker 의 주기적 작업에 통합하는 것이 자연스러움.)
-   */
-  public int cancelExpiredCalls() {
-    // TODO: Phase 3 에서 Redis 스캔 기반으로 구현
-    return 0;
   }
 
   // ================== 내부 헬퍼 ==================
