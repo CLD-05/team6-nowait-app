@@ -20,6 +20,10 @@ public class Waiting {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
+  /* Redis 의 waitingToken — Worker 가 idempotent upsert 를 위해 사용하는 자연키 */
+  @Column(name = "waiting_token", nullable = false, length = 36, unique = true)
+  private String waitingToken;
+
   @Column(name = "user_id", nullable = false)
   private Long userId;
 
@@ -54,8 +58,9 @@ public class Waiting {
   @Column(name = "near_call_notified", nullable = false)
   private boolean nearCallNotified = false;
 
-  private Waiting(Long userId, Long restaurantId, Long sessionId,
+  private Waiting(String waitingToken, Long userId, Long restaurantId, Long sessionId,
       int waitingNumber, int partySize, LocalDateTime registeredAt) {
+    this.waitingToken = waitingToken;
     this.userId = userId;
     this.restaurantId = restaurantId;
     this.sessionId = sessionId;
@@ -65,15 +70,28 @@ public class Waiting {
     this.registeredAt = registeredAt;
   }
 
-  public static Waiting register(Long userId, Long restaurantId, Long sessionId,
-      int waitingNumber, int partySize, LocalDateTime registeredAt) {
+  public static Waiting register(String waitingToken, Long userId, Long restaurantId,
+      Long sessionId, int waitingNumber, int partySize, LocalDateTime registeredAt) {
     if (partySize <= 0) {
       throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "인원 수는 1 이상이어야 합니다.");
     }
     if (waitingNumber <= 0) {
       throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "대기 번호는 1 이상이어야 합니다.");
     }
-    return new Waiting(userId, restaurantId, sessionId, waitingNumber, partySize, registeredAt);
+    return new Waiting(waitingToken, userId, restaurantId, sessionId,
+        waitingNumber, partySize, registeredAt);
+  }
+
+  /*
+   * Worker 전용 — Redis Hash 의 현재 상태로 DB 행을 동기화한다.
+   * 메시지가 어떤 순서로 도착해도 멱등성을 보장하기 위해 절대 상태로 덮어쓴다.
+   */
+  public void syncFromRedis(WaitingStatus status,
+      LocalDateTime calledAt, LocalDateTime enteredAt, LocalDateTime canceledAt) {
+    this.status = status;
+    this.calledAt = calledAt;
+    this.enteredAt = enteredAt;
+    this.canceledAt = canceledAt;
   }
 
   /* WAITING → CALLED */

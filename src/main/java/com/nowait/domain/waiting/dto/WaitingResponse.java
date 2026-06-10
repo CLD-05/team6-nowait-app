@@ -1,14 +1,22 @@
 package com.nowait.domain.waiting.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.nowait.domain.waiting.entity.Waiting;
+import com.nowait.domain.waiting.redis.WaitingTokenData;
 import com.nowait.domain.waiting.type.WaitingStatus;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
+/*
+ * 웨이팅 응답 DTO.
+ * Redis Hash (WaitingTokenData) 를 그대로 노출.
+ *
+ * waitingToken : 사용자/점주가 후속 API (취소/호출/입장) 호출 시 사용하는 식별자
+ */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record WaitingResponse(
-    Long waitingId,
+    String waitingToken,
     Long sessionId,
     Long restaurantId,
     Long userId,
@@ -21,23 +29,32 @@ public record WaitingResponse(
     LocalDateTime enteredAt,
     LocalDateTime canceledAt) {
 
-  public static WaitingResponse of(Waiting w, Long aheadCount) {
+  public static WaitingResponse of(String token, WaitingTokenData data, Long aheadCount) {
     return new WaitingResponse(
-        w.getId(),
-        w.getSessionId(),
-        w.getRestaurantId(),
-        w.getUserId(),
-        w.getWaitingNumber(),
-        w.getPartySize(),
-        w.getStatus(),
+        token,
+        data.sessionId(),
+        data.restaurantId(),
+        data.userId(),
+        data.waitingNumber(),
+        data.partySize(),
+        data.status(),
         aheadCount,
-        w.getRegisteredAt(),
-        w.getCalledAt(),
-        w.getEnteredAt(),
-        w.getCanceledAt());
+        toDateTime(data.registeredAt()),
+        toDateTimeNullable(data.calledAt()),
+        toDateTimeNullable(data.enteredAt()),
+        toDateTimeNullable(data.canceledAt())
+    );
   }
 
-  public static WaitingResponse from(Waiting w) {
-    return of(w, null);
+  public static WaitingResponse of(String token, WaitingTokenData data) {
+    return of(token, data, null);
+  }
+
+  private static LocalDateTime toDateTime(long millis) {
+    return LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault());
+  }
+
+  private static LocalDateTime toDateTimeNullable(Long millis) {
+    return millis == null ? null : toDateTime(millis);
   }
 }
