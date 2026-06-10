@@ -1,12 +1,21 @@
 package com.nowait.domain.reservation.service;
 
+import java.time.LocalTime;
+import java.util.List;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nowait.domain.reservation.dto.ReservationCreateRequest;
 import com.nowait.domain.reservation.dto.ReservationResponse;
 import com.nowait.domain.reservation.entity.Reservation;
 import com.nowait.domain.reservation.repository.ReservationRepository;
 import com.nowait.domain.reservation.type.ReservationStatus;
 import com.nowait.domain.restaurant.entity.Restaurant;
+import com.nowait.domain.restaurant.entity.RestaurantHour;
+import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
+import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.slot.entity.Slot;
 import com.nowait.domain.slot.repository.SlotRepository;
@@ -14,11 +23,8 @@ import com.nowait.domain.user.entity.User;
 import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +34,7 @@ public class ReservationService {
     private final ReservationRepository reservationRepository;
     private final UserRepository userRepository;
     private final RestaurantRepository restaurantRepository;
+    private final RestaurantHourRepository restaurantHourRepository;
     private final SlotRepository slotRepository;
 
     /**
@@ -54,6 +61,31 @@ public class ReservationService {
         
         if ("N".equals(restaurant.getReservationAvailable())) {
         	throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
+        }
+        
+        // =================================================================
+        // 🌟 요일별 휴무일 및 영업시간 체킹
+        // =================================================================
+        
+        // A. 자바 표준 요일 이름(ex: "MONDAY")을 구한 뒤, 앞 3글자만 잘라 대문자("MON")로 만듭니다.
+        String dayName3Letters = slot.getSlotDate().getDayOfWeek().name().substring(0, 3);
+        
+        DayOfWeek customDayOfWeek = DayOfWeek.valueOf(dayName3Letters);
+
+        // B. 해당 식당의 해당 요일 영업 정보 조회
+        RestaurantHour hourInfo = restaurantHourRepository
+    		.findByRestaurantIdAndDayOfWeek(restaurant.getId(), customDayOfWeek)
+            .orElseThrow(() -> new BusinessException(ErrorCode.OPERATING_INFO_NOT_FOUND));
+
+        // C. 정기 휴무일인지 검증
+        if ("Y".equals(hourInfo.getIsRegularHoliday())) {
+            throw new BusinessException(ErrorCode.RESTAURANT_CLOSED_DAY);
+        }
+
+        // D. 슬롯 시간이 실제 영업시간 내에 포함되는지 검증
+        LocalTime slotTime = slot.getSlotTime();
+        if (slotTime.isBefore(hourInfo.getOpenTime()) || slotTime.isAfter(hourInfo.getCloseTime())) {
+            throw new BusinessException(ErrorCode.NOT_OPERATING_TIME);
         }
         
         // 해당 타임 슬롯의 최소/최대 인원수 검증
