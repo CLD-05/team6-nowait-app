@@ -24,6 +24,7 @@ import lombok.NoArgsConstructor;
 @Table(name = "restaurant")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@org.hibernate.annotations.SQLRestriction("is_deleted = 'N'")
 public class Restaurant extends BaseTimeEntity {
 	
 	@Id
@@ -75,6 +76,9 @@ public class Restaurant extends BaseTimeEntity {
 	@Column(name = "waiting_available", nullable = false, columnDefinition = "CHAR(1) DEFAULT 'Y'")
     private String waitingAvailable = "Y";
 	
+	@Column(name = "is_deleted", nullable = false, columnDefinition = "CHAR(1) DEFAULT 'N'")
+	private String isDeleted = "N";
+	
 	// 🛎️ 점주가 설정을 바꿀 때 쓸 메서드
     public void updateAvailableStatus(String reservationAvailable, String waitingAvailable) {
         this.reservationAvailable = reservationAvailable;
@@ -87,6 +91,11 @@ public class Restaurant extends BaseTimeEntity {
 	
 	public void updateImage(String imageUrl) {
 		this.imageUrl = imageUrl;
+	}
+	
+	public void deleteRestaurant() {
+	    this.isDeleted = "Y";
+	    this.status = RestaurantStatus.PERMANENTLY_CLOSED; // 💡 영업 상태도 영구 폐업으로 자동 전환!
 	}
 	
 	@Builder
