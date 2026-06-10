@@ -7,6 +7,11 @@ import org.springframework.http.HttpStatus;
 public enum ErrorCode {
 
     // 400 Bad Request
+	RESTAURANT_NOT_OPEN(HttpStatus.BAD_REQUEST, "R400", "현재 매장이 영업 중(OPEN) 상태가 아닙니다."),
+	WAITING_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "W400", "현재 매장이 웨이팅 기능을 제공하지 않는 상태입니다."),
+	RESERVATION_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "RV400", "현재 매장이 예약 기능을 제공하지 않는 상태입니다."),
+	INVALID_MIN_HEADCOUNT(HttpStatus.BAD_REQUEST, "RV401", "예약 최소 인원보다 적은 인원입니다."),
+	INVALID_MAX_HEADCOUNT(HttpStatus.BAD_REQUEST, "RV402", "해당 시간대의 예약 가능 최대 인원을 초과했습니다."),
     INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "C400", "잘못된 입력값입니다."),
     MALFORMED_JSON(HttpStatus.BAD_REQUEST, "C401", "요청 형식이 올바르지 않습니다."),
     INVALID_STATUS_TRANSITION(HttpStatus.BAD_REQUEST, "C402", "현재 상태에서는 해당 작업을 수행할 수 없습니다."),

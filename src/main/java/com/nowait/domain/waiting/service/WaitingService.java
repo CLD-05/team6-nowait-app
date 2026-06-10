@@ -13,6 +13,7 @@ import com.nowait.domain.notification.type.NotificationType;
 import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
+import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.waiting.dto.WaitingCallLogResponse;
 import com.nowait.domain.waiting.dto.WaitingRegisterRequest;
 import com.nowait.domain.waiting.dto.WaitingResponse;
@@ -56,6 +57,19 @@ public class WaitingService {
   @Transactional
   public WaitingResponse register(Long restaurantId, Long loginUserId,
       WaitingRegisterRequest request) {
+	
+	  Restaurant restaurant = restaurantRepository.findById(restaurantId)
+			  .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+	  
+	  if (restaurant.getStatus() != RestaurantStatus.OPEN) {
+		  throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
+	  }
+	
+	// 🛑 점주가 웨이팅 기능을 OFF("N") 해두었다면 신청 봉쇄!
+	    if ("N".equals(restaurant.getWaitingAvailable())) {
+	        throw new BusinessException(ErrorCode.WAITING_NOT_AVAILABLE); // 에러코드 "W400" 하나 추가!
+	    }
+	    
     WaitingSession session = waitingSessionService
         .findSessionOrThrow(findTodaySessionId(restaurantId));
 
