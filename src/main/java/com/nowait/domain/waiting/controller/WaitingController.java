@@ -58,7 +58,7 @@ public class WaitingController {
 
   /* 점주: 호출 */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting/{waitingId}/call")
+  @PatchMapping(value = {"/api/owners/waiting/{waitingId}/call", "/api/owners/waiting/{waitingId}/recall"})
   public ResponseEntity<WaitingResponse> call(
       @PathVariable Long waitingId,
       @AuthenticationPrincipal CustomUserDetails principal) {

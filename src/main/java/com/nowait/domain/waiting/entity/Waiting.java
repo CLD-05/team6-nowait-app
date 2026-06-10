@@ -51,6 +51,9 @@ public class Waiting {
   @Column(name = "canceled_at")
   private LocalDateTime canceledAt;
 
+  @Column(name = "near_call_notified", nullable = false)
+  private boolean nearCallNotified = false;
+
   private Waiting(Long userId, Long restaurantId, Long sessionId,
       int waitingNumber, int partySize, LocalDateTime registeredAt) {
     this.userId = userId;
@@ -105,5 +108,10 @@ public class Waiting {
 
   public boolean isOwnedBy(Long userId) {
     return this.userId.equals(userId);
+  }
+
+  /* 앞 5팀 알림 발송 마킹 (중복 발송 방지) */
+  public void markNearCallNotified() {
+    this.nearCallNotified = true;
   }
 }
