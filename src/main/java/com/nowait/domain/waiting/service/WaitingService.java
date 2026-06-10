@@ -193,34 +193,6 @@ public class WaitingService {
       );
     });
 
-    
-    /* 호출 알림 */
-    String restaurantName = getRestaurantName(data.restaurantId());
-    notificationService.notify(
-        data.userId(),
-        NotificationType.WAITING_CALLED,
-        restaurantName + " 입장해주세요!"
-    );
-
-    log.info("Waiting called. token={}", token);
-
-    WaitingTokenData updated = waitingRedis.findByToken(token);
-    return WaitingResponse.of(token, updated == null ? data : updated);
-  }
-
-    /* 호출 알림 (트랜잭션 격리 없이 그대로 — Redis 라 트랜잭션 개념 없음) */
-    String restaurantName = getRestaurantName(data.restaurantId());
-    notificationService.notify(
-        data.userId(),
-        NotificationType.WAITING_CALLED,
-        restaurantName + " 입장해주세요!"
-    );
-
-    log.info("Waiting called. token={}", token);
-
-    WaitingTokenData updated = waitingRedis.findByToken(token);
-    return WaitingResponse.of(token, updated == null ? data : updated);
-  }
 
   /*
    * 점주: 취소 처리 (WAITING/CALLED → CANCELLED)
