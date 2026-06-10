@@ -12,7 +12,7 @@ public class WebConfig implements WebMvcConfigurer {
     registry.addMapping("/api/**")
         .allowedOrigins(
             "http://localhost:5173", // React 개발 서버
-            "https://singleuser.cloud", // prod 프론트엔드
+            "https://singleuser.cloud" // prod 프론트엔드
         )
         .allowedMethods("GET", "POST", "PATCH", "DELETE", "OPTIONS")
         .allowedHeaders("*")
