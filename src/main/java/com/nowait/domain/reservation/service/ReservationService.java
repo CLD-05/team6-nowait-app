@@ -1,16 +1,21 @@
 package com.nowait.domain.reservation.service;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
 import com.nowait.domain.reservation.dto.ReservationCreateRequest;
 import com.nowait.domain.reservation.dto.ReservationResponse;
 import com.nowait.domain.reservation.entity.Reservation;
+import com.nowait.domain.reservation.redis.ReservationRedisLuaExecutor;
+import com.nowait.domain.reservation.redis.ReservationTokenData;
 import com.nowait.domain.reservation.repository.ReservationRepository;
-import com.nowait.domain.reservation.type.ReservationStatus;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.entity.RestaurantHour;
 import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
@@ -19,77 +24,76 @@ import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.slot.entity.Slot;
 import com.nowait.domain.slot.repository.SlotRepository;
-import com.nowait.domain.user.entity.User;
-import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+/*
+ * 예약 서비스 — Redis-first 아키텍처.
+ *
+ * 동작 원리:
+ *   1. 생성/취소/방문/노쇼 모두 Redis Lua 로 원자 처리
+ *   2. DB INSERT/UPDATE 는 Worker (Phase 6) 가 비동기로 수행
+ *   3. 본 서비스는 DB 를 절대 mutate 하지 않음 (slot.decrease/increase 호출 X)
+ *
+ * 식별자:
+ *   - 모든 후속 액션은 reservationToken (UUID) 기반
+ *   - reservationId(Long) 는 Worker 가 DB sync 한 후에만 존재
+ */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ReservationService {
 
     private final ReservationRepository reservationRepository;
-    private final UserRepository userRepository;
     private final RestaurantRepository restaurantRepository;
     private final RestaurantHourRepository restaurantHourRepository;
     private final SlotRepository slotRepository;
+    private final RestaurantOwnerRepository restaurantOwnerRepository;
+    private final ReservationRedisLuaExecutor reservationRedis;
 
-    /**
-     * 예약 생성
-     * 1. 유저/식당/슬롯 존재 확인
-     * 2. 슬롯 잔여 수 확인
-     * 3. 동일 슬롯 중복 예약 확인
-     * 4. 예약 생성 + 슬롯 잔여 수 차감
+    /* ================== 사용자 ================== */
+
+    /*
+     * 예약 생성 — POST /api/v1/reservations
+     * 검증은 DB, 생성은 Redis Lua
      */
-    @Transactional
     public ReservationResponse createReservation(Long userId, ReservationCreateRequest request) {
-        User user = userRepository.findById(userId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-
         Restaurant restaurant = restaurantRepository.findById(request.restaurantId())
             .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
 
         Slot slot = slotRepository.findById(request.slotId())
             .orElseThrow(() -> new BusinessException(ErrorCode.SLOT_NOT_FOUND));
-        
-        if (restaurant.getStatus() != RestaurantStatus.OPEN) {
-        	throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
-        }
-        
-        if ("N".equals(restaurant.getReservationAvailable())) {
-        	throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
-        }
-        
-        // =================================================================
-        // 🌟 요일별 휴무일 및 영업시간 체킹
-        // =================================================================
-        
-        // A. 자바 표준 요일 이름(ex: "MONDAY")을 구한 뒤, 앞 3글자만 잘라 대문자("MON")로 만듭니다.
-        String dayName3Letters = slot.getSlotDate().getDayOfWeek().name().substring(0, 3);
-        
-        DayOfWeek customDayOfWeek = DayOfWeek.valueOf(dayName3Letters);
 
-        // B. 해당 식당의 해당 요일 영업 정보 조회
+        if (restaurant.getStatus() != RestaurantStatus.OPEN) {
+            throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
+        }
+        if ("N".equals(restaurant.getReservationAvailable())) {
+            throw new BusinessException(ErrorCode.RESERVATION_NOT_AVAILABLE);
+        }
+
+        /* 요일별 휴무일 / 영업시간 검증 */
+        String dayName3 = slot.getSlotDate().getDayOfWeek().name().substring(0, 3);
+        DayOfWeek dayOfWeek = DayOfWeek.valueOf(dayName3);
+
         RestaurantHour hourInfo = restaurantHourRepository
-    		.findByRestaurantIdAndDayOfWeek(restaurant.getId(), customDayOfWeek)
+            .findByRestaurantIdAndDayOfWeek(restaurant.getId(), dayOfWeek)
             .orElseThrow(() -> new BusinessException(ErrorCode.OPERATING_INFO_NOT_FOUND));
 
-        // C. 정기 휴무일인지 검증
         if ("Y".equals(hourInfo.getIsRegularHoliday())) {
             throw new BusinessException(ErrorCode.RESTAURANT_CLOSED_DAY);
         }
 
-        // D. 슬롯 시간이 실제 영업시간 내에 포함되는지 검증
         LocalTime slotTime = slot.getSlotTime();
         if (slotTime.isBefore(hourInfo.getOpenTime()) || slotTime.isAfter(hourInfo.getCloseTime())) {
             throw new BusinessException(ErrorCode.NOT_OPERATING_TIME);
         }
-        
-        // 해당 타임 슬롯의 최소/최대 인원수 검증
-        int headcount = request.headcount(); // Record 문법 구조에 맞춰 request.headcount()로 호출!
+
+        /* 인원수 검증 */
+        int headcount = request.headcount();
         if (headcount < slot.getMinHeadcount()) {
             throw new BusinessException(ErrorCode.INVALID_MIN_HEADCOUNT);
         }
@@ -97,35 +101,32 @@ public class ReservationService {
             throw new BusinessException(ErrorCode.INVALID_MAX_HEADCOUNT);
         }
 
-        // 슬롯 마감 여부 확인
-        if (slot.getRemainCount() <= 0) {
-            throw new BusinessException(ErrorCode.SLOT_FULL);
-        }
+        /* 예약 시각을 epoch millis 로 (노쇼 스케줄러 score 용) */
+        long reservationTimeMillis = toEpochMillis(slot.getSlotDate(), slot.getSlotTime());
 
-        // 동일 슬롯 중복 예약 확인 (CONFIRMED 상태인 것만)
-        boolean alreadyReserved = reservationRepository.existsByUserIdAndSlotIdAndStatus(
-            userId, slot.getId(), ReservationStatus.CONFIRMED
+        /* Redis Lua — 중복 차단 / 정원 검증 / 토큰 생성 / 큐 푸시까지 원자 처리 */
+        ReservationRedisLuaExecutor.CreateResult result = reservationRedis.create(
+            userId,
+            restaurant.getId(),
+            slot.getId(),
+            headcount,
+            slot.getTotalCount(),
+            reservationTimeMillis
         );
-        if (alreadyReserved) {
-            throw new BusinessException(ErrorCode.DUPLICATE_RESERVATION);
-        }
 
-        // 슬롯 잔여 수 차감
-        slot.decrease();
+        log.info("Reservation created. token={}, userId={}, slotId={}",
+            result.token(), userId, slot.getId());
 
-        // 예약 생성
-        Reservation reservation = Reservation.builder()
-            .user(user)
-            .restaurant(restaurant)
-            .slot(slot)
-            .headcount(request.headcount())
-            .build();
-
-        return ReservationResponse.from(reservationRepository.save(reservation));
+        ReservationTokenData data = reservationRedis.findByToken(result.token());
+        return ReservationResponse.fromRedis(
+            result.token(), data,
+            restaurant.getName(), slot.getSlotDate(), slot.getSlotTime()
+        );
     }
 
-    /**
-     * 내 예약 목록 조회
+    /*
+     * 내 예약 목록 — DB 조회 (Worker 가 sync 한 결과).
+     * 방금 생성한 예약은 sync 지연 (~500ms) 동안 미노출 가능.
      */
     public List<ReservationResponse> getMyReservations(Long userId) {
         return reservationRepository.findByUserIdOrderByCreatedAtDesc(userId)
@@ -134,83 +135,98 @@ public class ReservationService {
             .toList();
     }
 
-    /**
-     * 예약 상세 조회
-     * - 본인 예약만 조회 가능
+    /*
+     * 예약 상세 (본인) — Redis 우선, 없으면 DB fallback.
      */
-    public ReservationResponse getReservation(Long userId, Long reservationId) {
-        Reservation reservation = reservationRepository.findById(reservationId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.RESERVATION_NOT_FOUND));
+    public ReservationResponse getReservation(Long userId, String token) {
+        ReservationTokenData data = reservationRedis.findByToken(token);
+        if (data != null) {
+            if (!data.userId().equals(userId)) {
+                throw new BusinessException(ErrorCode.RESERVATION_ACCESS_DENIED);
+            }
+            return buildFromRedis(token, data);
+        }
 
+        Reservation reservation = reservationRepository.findByReservationToken(token)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESERVATION_NOT_FOUND));
         if (!reservation.isOwnedBy(userId)) {
             throw new BusinessException(ErrorCode.RESERVATION_ACCESS_DENIED);
         }
-
         return ReservationResponse.from(reservation);
     }
 
-    /**
-     * 예약 취소
-     * - 본인 예약만 취소 가능
-     * - CONFIRMED 상태만 취소 가능
-     * - 취소 시 슬롯 잔여 수 복구
+    /*
+     * 예약 취소 (사용자) — PATCH /api/v1/reservations/{token}/cancel
      */
-    @Transactional
-    public ReservationResponse cancelReservation(Long userId, Long reservationId) {
-        Reservation reservation = reservationRepository.findById(reservationId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.RESERVATION_NOT_FOUND));
+    public ReservationResponse cancelReservation(Long userId, String token) {
+        ReservationTokenData data = findTokenDataOrThrow(token);
+        reservationRedis.cancel(token, userId, data.slotId());
+        log.info("Reservation cancelled by user. token={}, userId={}", token, userId);
 
-        if (!reservation.isOwnedBy(userId)) {
-            throw new BusinessException(ErrorCode.RESERVATION_ACCESS_DENIED);
-        }
-
-        if (reservation.getStatus() == ReservationStatus.CANCELLED) {
-            throw new BusinessException(ErrorCode.ALREADY_CANCELLED_RESERVATION);
-        }
-
-        if (!reservation.isCancellable()) {
-            throw new BusinessException(ErrorCode.CANNOT_CANCEL_RESERVATION);
-        }
-
-        // 슬롯 잔여 수 복구
-        reservation.getSlot().increase();
-
-        reservation.cancel();
-
-        return ReservationResponse.from(reservation);
+        ReservationTokenData updated = reservationRedis.findByToken(token);
+        return buildFromRedis(token, updated == null ? data : updated);
     }
 
-    /**
-     * [점주 전용] 방문 완료 처리
+    /* ================== 점주 ================== */
+
+    /*
+     * 방문 완료 처리 (점주) — PATCH /api/v1/owner/reservations/{token}/visit
      */
-    @Transactional
-    public ReservationResponse markVisited(Long reservationId) {
-        Reservation reservation = reservationRepository.findById(reservationId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.RESERVATION_NOT_FOUND));
+    public ReservationResponse markVisited(Long ownerUserId, String token) {
+        ReservationTokenData data = findTokenDataOrThrow(token);
+        verifyOwnership(data.restaurantId(), ownerUserId);
 
-        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
-            throw new BusinessException(ErrorCode.CANNOT_CANCEL_RESERVATION);
-        }
+        reservationRedis.visit(token, data.userId(), data.slotId());
+        log.info("Reservation visited. token={}", token);
 
-        reservation.markVisited();
-
-        return ReservationResponse.from(reservation);
+        ReservationTokenData updated = reservationRedis.findByToken(token);
+        return buildFromRedis(token, updated == null ? data : updated);
     }
 
-    /**
-     * [점주 전용] 노쇼 처리
+    /*
+     * 노쇼 처리 (점주) — PATCH /api/v1/owner/reservations/{token}/noshow
      */
-    @Transactional
-    public ReservationResponse markNoShow(Long reservationId) {
-        Reservation reservation = reservationRepository.findById(reservationId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.RESERVATION_NOT_FOUND));
+    public ReservationResponse markNoShow(Long ownerUserId, String token) {
+        ReservationTokenData data = findTokenDataOrThrow(token);
+        verifyOwnership(data.restaurantId(), ownerUserId);
 
-        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
-            throw new BusinessException(ErrorCode.CANNOT_CANCEL_RESERVATION);
+        reservationRedis.noShow(token, data.userId(), data.slotId());
+        log.info("Reservation no-show. token={}", token);
+
+        ReservationTokenData updated = reservationRedis.findByToken(token);
+        return buildFromRedis(token, updated == null ? data : updated);
+    }
+
+    // ================== 내부 헬퍼 ==================
+
+    private ReservationTokenData findTokenDataOrThrow(String token) {
+        ReservationTokenData data = reservationRedis.findByToken(token);
+        if (data == null) {
+            throw new BusinessException(ErrorCode.RESERVATION_NOT_FOUND);
         }
+        return data;
+    }
 
-        reservation.markNoShow();
+    private void verifyOwnership(Long restaurantId, Long loginUserId) {
+        if (!restaurantOwnerRepository.existsByUserIdAndRestaurantId(loginUserId, restaurantId)) {
+            throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
+        }
+    }
 
-        return ReservationResponse.from(reservation);
+    /* 응답용 — restaurant/slot 메타데이터를 DB 에서 조회해서 합쳐줌 */
+    private ReservationResponse buildFromRedis(String token, ReservationTokenData data) {
+        String restaurantName = restaurantRepository.findById(data.restaurantId())
+            .map(Restaurant::getName).orElse("매장");
+        Slot slot = slotRepository.findById(data.slotId()).orElse(null);
+        LocalDate slotDate = slot == null ? null : slot.getSlotDate();
+        LocalTime slotTime = slot == null ? null : slot.getSlotTime();
+        return ReservationResponse.fromRedis(token, data, restaurantName, slotDate, slotTime);
+    }
+
+    private static long toEpochMillis(LocalDate date, LocalTime time) {
+        return LocalDateTime.of(date, time)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli();
     }
 }
