@@ -39,18 +39,25 @@ public class User extends BaseTimeEntity {
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false)
 	private UserRole role;
-
-	@Builder
-	public User(String email, String password, String name, UserRole role) {
-		this.email = email;
-		this.password = password;
-		this.name = name;
-		this.role = role;
+	
+	@Column(name = "is_deleted", nullable = false, columnDefinition = "CHAR(1) DEFAULT 'N'")
+	private String isDeleted = "N";
+	
+	public void withdrawUser() {
+	    this.isDeleted = "Y";
 	}
 
 	public void updateProfile(String name) {
 		if (name != null && !name.trim().isEmpty()) {
 			this.name = name;
 		}
+	}
+	
+	@Builder
+	public User(String email, String password, String name, UserRole role) {
+		this.email = email;
+		this.password = password;
+		this.name = name;
+		this.role = role;
 	}
 }
