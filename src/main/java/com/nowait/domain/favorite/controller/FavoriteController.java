@@ -21,7 +21,7 @@ public class FavoriteController {
 	
 	private final FavoriteService favoriteService;
 	
-	@GetMapping("/api/users/me/favorites")
+	@GetMapping("/api/v1/users/me/favorites")
 	public ResponseEntity<List<FavoriteResponse>> getMyFavorites(
 			@AuthenticationPrincipal CustomUserDetails userDetails
 			) {
@@ -29,7 +29,7 @@ public class FavoriteController {
 		return ResponseEntity.ok(responses);
 	}
 	
-	@PostMapping("/api/restaurants/{restaurantId}/favorite")
+	@PostMapping("/api/v1/restaurants/{restaurantId}/favorite")
 	public ResponseEntity<String> toggleFavorite(
 			@PathVariable Long restaurantId,
 			@AuthenticationPrincipal CustomUserDetails userDetails

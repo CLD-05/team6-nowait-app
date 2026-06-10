@@ -19,7 +19,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/owners/restaurants/{restaurantId}/hours")
+@RequestMapping("/api/v1/owners/restaurants/{restaurantId}/hours")
 public class RestaurantHourController {
 	
 	private final RestaurantHourService restaurantHourService;

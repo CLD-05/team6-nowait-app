@@ -22,7 +22,7 @@ public class WaitingController {
 
   /* 사용자: 웨이팅 등록 */
   @PreAuthorize("hasRole('USER')")
-  @PostMapping("/api/restaurants/{restaurantId}/waitings")
+  @PostMapping("/api/v1/restaurants/{restaurantId}/waitings")
   public ResponseEntity<WaitingResponse> register(
       @PathVariable Long restaurantId,
       @AuthenticationPrincipal CustomUserDetails principal,
@@ -33,14 +33,14 @@ public class WaitingController {
   }
 
   /* 사용자: 내 웨이팅 조회 */
-  @GetMapping("/api/waitings/me")
+  @GetMapping("/api/v1/waitings/me")
   public ResponseEntity<WaitingResponse> getMyWaiting(
       @AuthenticationPrincipal CustomUserDetails principal) {
     return ResponseEntity.ok(waitingService.getMyWaiting(principal.getUserId()));
   }
 
   /* 사용자: 내 웨이팅 취소 */
-  @PatchMapping("/api/waitings/{waitingId}/cancel")
+  @PatchMapping("/api/v1/waitings/{waitingId}/cancel")
   public ResponseEntity<WaitingResponse> cancelMyWaiting(
       @PathVariable Long waitingId,
       @AuthenticationPrincipal CustomUserDetails principal) {
@@ -49,7 +49,7 @@ public class WaitingController {
 
   /* 점주: 식당의 웨이팅 목록 조회 */
   @PreAuthorize("hasRole('OWNER')")
-  @GetMapping("/api/owners/restaurants/{restaurantId}/waitings")
+  @GetMapping("/api/v1/owners/restaurants/{restaurantId}/waitings")
   public ResponseEntity<List<WaitingResponse>> getOwnerWaitings(
       @PathVariable Long restaurantId,
       @AuthenticationPrincipal CustomUserDetails principal) {
@@ -58,7 +58,7 @@ public class WaitingController {
 
   /* 점주: 호출 */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping(value = {"/api/owners/waiting/{waitingId}/call", "/api/owners/waiting/{waitingId}/recall"})
+  @PatchMapping(value = {"/api/v1/owners/waiting/{waitingId}/call", "/api/v1/owners/waiting/{waitingId}/recall"})
   public ResponseEntity<WaitingResponse> call(
       @PathVariable Long waitingId,
       @AuthenticationPrincipal CustomUserDetails principal) {
@@ -67,7 +67,7 @@ public class WaitingController {
 
   /* 점주: 취소 처리 */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting/{waitingId}/cancelled")
+  @PatchMapping("/api/v1/owners/waiting/{waitingId}/cancelled")
   public ResponseEntity<WaitingResponse> cancelByOwner(
       @PathVariable Long waitingId,
       @AuthenticationPrincipal CustomUserDetails principal) {
@@ -76,7 +76,7 @@ public class WaitingController {
 
   /* 점주: 입장 처리 (enter) */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting/{waitingId}/enter")
+  @PatchMapping("/api/v1/owners/waiting/{waitingId}/enter")
   public ResponseEntity<WaitingResponse> enter(
       @PathVariable Long waitingId,
       @AuthenticationPrincipal CustomUserDetails principal) {
@@ -85,7 +85,7 @@ public class WaitingController {
 
   /* 점주: 입장 완료 처리 (entered) — 현재 enter와 동일 동작 */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting/{waitingId}/entered")
+  @PatchMapping("/api/v1/owners/waiting/{waitingId}/entered")
   public ResponseEntity<WaitingResponse> entered(
       @PathVariable Long waitingId,
       @AuthenticationPrincipal CustomUserDetails principal) {

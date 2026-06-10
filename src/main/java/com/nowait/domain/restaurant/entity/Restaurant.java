@@ -31,7 +31,7 @@ public class Restaurant extends BaseTimeEntity {
 	@Column(name = "restaurant_id")
 	private Long id;
 	
-	@Column(name = "owner_id", nullable = false)
+	@Column(name = "owner_id")
 	private Long ownerId;
 	
 	@Column(name = "restaurant_name", nullable = false, length = 100)
@@ -50,7 +50,7 @@ public class Restaurant extends BaseTimeEntity {
 	@Lob
 	private String description;
 	
-	@Column(name = "image_url", length = 50)
+	@Column(name = "image_url", length = 500)
 	private String imageUrl;
 	
 	@Column(name = "main_menu_name", length = 255)
@@ -74,6 +74,15 @@ public class Restaurant extends BaseTimeEntity {
 	
 	@Column(name = "waiting_available", nullable = false, columnDefinition = "CHAR(1) DEFAULT 'Y'")
     private String waitingAvailable = "Y";
+	
+	@Column(name = "open_time")
+	private LocalTime openTime;
+
+	@Column(name = "close_time")
+	private LocalTime closeTime;
+
+	@Column(name = "closed_days", length = 100)
+	private String closedDays;
 	
 	// 🛎️ 점주가 설정을 바꿀 때 쓸 메서드
     public void updateAvailableStatus(String reservationAvailable, String waitingAvailable) {

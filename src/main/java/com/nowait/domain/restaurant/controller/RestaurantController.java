@@ -31,7 +31,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/restaurants")
+@RequestMapping("/api/v1/restaurants")
 public class RestaurantController {
 	
 	private final RestaurantService restaurantService;
