@@ -49,4 +49,7 @@ public interface WaitingRepository extends JpaRepository<Waiting, Long> {
 
   /* 스케줄러: 호출 후 타임아웃된 CALLED 상태 웨이팅 조회 */
   List<Waiting> findByStatusAndCalledAtBefore(WaitingStatus status, LocalDateTime threshold);
+
+  /* Worker: token 으로 기존 행 조회 (idempotent upsert 의 키) */
+  Optional<Waiting> findByWaitingToken(String waitingToken);
 }

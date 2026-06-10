@@ -103,7 +103,7 @@ public class RestaurantService {
 		}
 		// [주의] 지금은 아직 MySQL에 칼럼을 안 만들었으니, 
         // 나중에 팀원들과 이야기해서 엔티티에 필드 추가하면 아래 주석을 풀어줄 것입니다!
-        // restaurant.softDelete();
+         restaurant.deleteRestaurant();
 	}
 	
 	

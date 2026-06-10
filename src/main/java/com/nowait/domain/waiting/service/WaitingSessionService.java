@@ -4,8 +4,8 @@ import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
 import com.nowait.domain.waiting.dto.WaitingSessionOpenRequest;
 import com.nowait.domain.waiting.dto.WaitingSessionResponse;
 import com.nowait.domain.waiting.entity.WaitingSession;
+import com.nowait.domain.waiting.redis.WaitingRedisLuaExecutor;
 import com.nowait.domain.waiting.repository.WaitingSessionRepository;
-import com.nowait.domain.waiting.repository.WaitingRedisRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -24,13 +24,15 @@ public class WaitingSessionService {
 
   private final WaitingSessionRepository waitingSessionRepository;
   private final RestaurantOwnerRepository restaurantOwnerRepository;
-  private final WaitingRedisRepository waitingRedisRepository;
+  private final WaitingRedisLuaExecutor waitingRedis;
 
   public WaitingSessionResponse getTodaySession(Long restaurantId) {
     WaitingSession session = waitingSessionRepository
         .findByRestaurantIdAndSessionDate(restaurantId, LocalDate.now())
         .orElseThrow(() -> new BusinessException(ErrorCode.WAITING_SESSION_NOT_FOUND));
-    return WaitingSessionResponse.from(session);
+    /* currentCount 는 Redis 가 source of truth — 응답 시점에 덮어쓰기 */
+    int liveCount = waitingRedis.getCount(session.getId());
+    return WaitingSessionResponse.from(session, liveCount);
   }
 
   @Transactional
@@ -46,10 +48,10 @@ public class WaitingSessionService {
     WaitingSession session = WaitingSession.open(
         restaurantId, today, request.maxWaitingCount(), LocalDateTime.now());
     waitingSessionRepository.save(session);
-    waitingRedisRepository.initSession(session.getId());
+    waitingRedis.initSession(session.getId());
 
     log.info("Waiting session opened. sessionId={}, restaurantId={}", session.getId(), restaurantId);
-    return WaitingSessionResponse.from(session);
+    return WaitingSessionResponse.from(session, 0);
   }
 
   @Transactional
@@ -58,7 +60,7 @@ public class WaitingSessionService {
     verifyOwnership(session.getRestaurantId(), loginUserId);
     session.pause();
     log.info("Waiting session paused. sessionId={}", sessionId);
-    return WaitingSessionResponse.from(session);
+    return WaitingSessionResponse.from(session, waitingRedis.getCount(sessionId));
   }
 
   @Transactional
@@ -67,7 +69,7 @@ public class WaitingSessionService {
     verifyOwnership(session.getRestaurantId(), loginUserId);
     session.resume();
     log.info("Waiting session resumed. sessionId={}", sessionId);
-    return WaitingSessionResponse.from(session);
+    return WaitingSessionResponse.from(session, waitingRedis.getCount(sessionId));
   }
 
   @Transactional
@@ -75,9 +77,9 @@ public class WaitingSessionService {
     WaitingSession session = findSessionOrThrow(sessionId);
     verifyOwnership(session.getRestaurantId(), loginUserId);
     session.close(LocalDateTime.now());
-    waitingRedisRepository.clearSession(sessionId);
+    waitingRedis.clearSession(sessionId);
     log.info("Waiting session closed. sessionId={}", sessionId);
-    return WaitingSessionResponse.from(session);
+    return WaitingSessionResponse.from(session, 0);
   }
 
   public WaitingSession findSessionOrThrow(Long sessionId) {

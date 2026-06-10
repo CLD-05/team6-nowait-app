@@ -15,4 +15,6 @@ public interface RestaurantRepository extends JpaRepository<Restaurant, Long> {
 	
 	List<Restaurant> findByNameContaining(String keyword);
 
+	List<Restaurant> findByOwnerIdAndIsDeleted(Long userId, String string);
+
 }

@@ -9,6 +9,8 @@ public enum ErrorCode {
     // 400 Bad Request
 	RESTAURANT_NOT_OPEN(HttpStatus.BAD_REQUEST, "R400", "현재 매장이 영업 중(OPEN) 상태가 아닙니다."),
 	WAITING_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "W400", "현재 매장이 웨이팅 기능을 제공하지 않는 상태입니다."),
+	RESTAURANT_CLOSED_DAY(HttpStatus.BAD_REQUEST, "RH400", "해당 날짜는 식당의 정기 휴무일입니다."),
+    NOT_OPERATING_TIME(HttpStatus.BAD_REQUEST, "RH401", "식당 영업시간 외에는 예약이 불가능합니다."),
 	RESERVATION_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "RV400", "현재 매장이 예약 기능을 제공하지 않는 상태입니다."),
 	INVALID_MIN_HEADCOUNT(HttpStatus.BAD_REQUEST, "RV401", "예약 최소 인원보다 적은 인원입니다."),
 	INVALID_MAX_HEADCOUNT(HttpStatus.BAD_REQUEST, "RV402", "해당 시간대의 예약 가능 최대 인원을 초과했습니다."),
@@ -40,6 +42,7 @@ public enum ErrorCode {
     WAITING_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "WS404", "운영 중인 웨이팅 세션이 없습니다."),
     REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "RV404", "리뷰를 찾을 수 없습니다."),
     NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "N404", "알림을 찾을 수 없습니다."),
+    OPERATING_INFO_NOT_FOUND(HttpStatus.NOT_FOUND, "RH404", "해당 식당의 요일별 영업시간 정보가 존재하지 않습니다."),
 
     // 409 Conflict
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U409", "이미 사용 중인 이메일입니다."),

@@ -1,10 +1,10 @@
 package com.nowait.domain.waiting.service;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
-import java.util.Set;
+import java.util.Objects;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,7 +12,10 @@ import com.nowait.domain.notification.service.NotificationService;
 import com.nowait.domain.notification.type.NotificationType;
 import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
 import com.nowait.domain.restaurant.entity.Restaurant;
+import com.nowait.domain.restaurant.entity.RestaurantHour;
+import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
+import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.waiting.dto.WaitingCallLogResponse;
 import com.nowait.domain.waiting.dto.WaitingRegisterRequest;
@@ -20,15 +23,28 @@ import com.nowait.domain.waiting.dto.WaitingResponse;
 import com.nowait.domain.waiting.entity.Waiting;
 import com.nowait.domain.waiting.entity.WaitingCallLog;
 import com.nowait.domain.waiting.entity.WaitingSession;
+import com.nowait.domain.waiting.redis.WaitingRedisLuaExecutor;
+import com.nowait.domain.waiting.redis.WaitingTokenData;
 import com.nowait.domain.waiting.repository.WaitingCallLogRepository;
-import com.nowait.domain.waiting.repository.WaitingRedisRepository;
 import com.nowait.domain.waiting.repository.WaitingRepository;
-import com.nowait.domain.waiting.type.WaitingStatus;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+/*
+ * 웨이팅 서비스 — Redis-first 아키텍처.
+ *
+ * 동작 원리:
+ *   1. 등록/취소/호출/입장 모두 Redis Lua 로 원자적 처리
+ *   2. RDS 저장은 Worker 가 비동기로 수행 (waiting:pending-sync 큐 소비)
+ *   3. 본 서비스는 DB INSERT/UPDATE 를 하지 않음 (세션 entity 의 status 변경만 예외)
+ *
+ * 식별자:
+ *   - 사용자/점주 모두 waitingToken (UUID) 으로 후속 액션 호출
+ *   - waitingId 는 Worker 가 RDS INSERT 한 후에야 존재 → API 흐름에서는 사용 X
+ */
 
 @Slf4j
 @Service
@@ -36,19 +52,18 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional(readOnly = true)
 public class WaitingService {
 
-  private static final Set<WaitingStatus> ACTIVE_STATUSES = Set.of(WaitingStatus.WAITING, WaitingStatus.CALLED);
-  private final WaitingCallLogRepository waitingCallLogRepository;
   private static final int NEAR_CALL_THRESHOLD = 5;
-
-  private final WaitingRepository waitingRepository;
+  
   private final WaitingSessionService waitingSessionService;
   private final RestaurantOwnerRepository restaurantOwnerRepository;
-  private final WaitingRedisRepository waitingRedisRepository;
-  private final NotificationService notificationService;
   private final RestaurantRepository restaurantRepository;
+  private final WaitingRepository waitingRepository;
+  private final WaitingCallLogRepository waitingCallLogRepository;
+  private final WaitingRedisLuaExecutor waitingRedis;
+  private final NotificationService notificationService;
+  private final RestaurantHourRepository restaurantHourRepository;
 
-  @Value("${waiting.call-timeout-minutes:10}")
-  private long callTimeoutMinutes;
+  /* ================== 사용자 ================== */
 
   /*
    * 사용자: 웨이팅 등록
@@ -57,55 +72,62 @@ public class WaitingService {
   @Transactional
   public WaitingResponse register(Long restaurantId, Long loginUserId,
       WaitingRegisterRequest request) {
-	
-	  Restaurant restaurant = restaurantRepository.findById(restaurantId)
-			  .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
-	  
-	  if (restaurant.getStatus() != RestaurantStatus.OPEN) {
-		  throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
-	  }
-	
-	// 🛑 점주가 웨이팅 기능을 OFF("N") 해두었다면 신청 봉쇄!
-	    if ("N".equals(restaurant.getWaitingAvailable())) {
-	        throw new BusinessException(ErrorCode.WAITING_NOT_AVAILABLE); // 에러코드 "W400" 하나 추가!
-	    }
-	    
-    WaitingSession session = waitingSessionService
-        .findSessionOrThrow(findTodaySessionId(restaurantId));
+
+    Restaurant restaurant = restaurantRepository.findById(restaurantId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+
+    if (restaurant.getStatus() != RestaurantStatus.OPEN) {
+      throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
+    }
+    if ("N".equals(restaurant.getWaitingAvailable())) {
+      throw new BusinessException(ErrorCode.WAITING_NOT_AVAILABLE);
+    }
+    
+    // A. 현재 '지금 이 순간'의 요일을 구하고, 3글자 Enum으로 변환
+    String currentDayName = LocalDateTime.now().getDayOfWeek().name().substring(0, 3);
+    DayOfWeek customDayOfWeek = DayOfWeek.valueOf(currentDayName);
+
+    // B. DB에서 오늘 요일에 해당하는 식당의 영업 장부 조회
+    RestaurantHour todayHourInfo = restaurantHourRepository
+        .findByRestaurantIdAndDayOfWeek(restaurantId, customDayOfWeek)
+        .orElseThrow(() -> new BusinessException(ErrorCode.OPERATING_INFO_NOT_FOUND));
+
+    // C. 🚫 오늘이 정기 휴무일('Y')인지 검증
+    if ("Y".equals(todayHourInfo.getIsRegularHoliday())) {
+        throw new BusinessException(ErrorCode.RESTAURANT_CLOSED_DAY);
+    }
+
+    // D. 🚫 지금 줄 서는 시각이 영업시간 범위 내에 있는지 검증
+    LocalTime currentTime = LocalTime.now();
+    if (currentTime.isBefore(todayHourInfo.getOpenTime()) || currentTime.isAfter(todayHourInfo.getCloseTime())) {
+    	throw new BusinessException(ErrorCode.NOT_OPERATING_TIME);
+    }
+
+    WaitingSession session = waitingSessionService.findSessionOrThrow(
+        findTodaySessionId(restaurantId));
 
     if (!session.getStatus().canAcceptWaiting()) {
       throw new BusinessException(ErrorCode.WAITING_SESSION_NOT_ACCEPTING);
     }
-    if (waitingRepository.existsByUserIdAndSessionIdAndStatusIn(
-        loginUserId, session.getId(), ACTIVE_STATUSES)) {
-      throw new BusinessException(ErrorCode.DUPLICATE_WAITING);
-    }
+    
 
-    // Redis 로 카운트 사전 확인 + 증가 (atomic)
-    int newCount = waitingRedisRepository.incrementCount(session.getId());
-    if (newCount > session.getMaxWaitingCount()) {
-      // 한도 초과 → 롤백 (감소)
-      waitingRedisRepository.decrementCount(session.getId());
-      throw new BusinessException(ErrorCode.WAITING_COUNT_EXCEEDED);
-    }
+    /* Lua 가 6개 키 원자 처리 — 중복/한도/채번/큐/Hash/사용자맵/Worker큐 */
+    WaitingRedisLuaExecutor.RegisterResult result = waitingRedis.register(
+        loginUserId,
+        session.getId(),
+        restaurantId,
+        request.partySize(),
+        session.getMaxWaitingCount()
+    );
 
-    // Redis 로 대기번호 atomic 채번
-    int nextNumber = waitingRedisRepository.incrementAndGetNextNumber(session.getId());
+    log.info("Waiting registered. token={}, sessionId={}, number={}, userId={}",
+        result.token(), session.getId(), result.waitingNumber(), loginUserId);
 
-    // DB 반영 (엔티티의 currentCount 동기화)
-    session.increaseCurrentCount();
-    Waiting waiting = Waiting.register(
-        loginUserId, restaurantId, session.getId(),
-        nextNumber, request.partySize(), LocalDateTime.now());
-    waitingRepository.save(waiting);
-
-    log.info("Waiting registered. waitingId={}, sessionId={}, number={}, userId={}, redisCount={}",
-        waiting.getId(), session.getId(), nextNumber, loginUserId, newCount);
-
-    // 신규 등록자가 6번째 자리이면 앞 5팀 알림 발송
+    /* 5팀 알림 트리거 (신규 등록자가 6번째 자리이면) */
     notifyNearCallIfThreshold(session.getId());
 
-    return WaitingResponse.of(waiting, 0L);
+    WaitingTokenData data = waitingRedis.findByToken(result.token());
+    return WaitingResponse.of(result.token(), data, 0L);
   }
 
   /*
@@ -113,186 +135,140 @@ public class WaitingService {
    * GET /api/waitings/me
    */
   public WaitingResponse getMyWaiting(Long loginUserId) {
-    Waiting waiting = waitingRepository
-        .findFirstByUserIdAndStatusInOrderByRegisteredAtDesc(loginUserId, ACTIVE_STATUSES)
-        .orElseThrow(() -> new BusinessException(ErrorCode.WAITING_NOT_FOUND));
-
-    long aheadCount = waitingRepository.countAhead(
-        waiting.getSessionId(), ACTIVE_STATUSES, waiting.getWaitingNumber());
-
-    return WaitingResponse.of(waiting, aheadCount);
+    String token = waitingRedis.findActiveTokenOf(loginUserId);
+    if (token == null) {
+      throw new BusinessException(ErrorCode.WAITING_NOT_FOUND);
+    }
+    WaitingTokenData data = waitingRedis.findByToken(token);
+    if (data == null) {
+      throw new BusinessException(ErrorCode.WAITING_NOT_FOUND);
+    }
+    long ahead = waitingRedis.aheadCount(data.sessionId(), token);
+    return WaitingResponse.of(token, data, ahead);
   }
 
   /*
    * 사용자: 본인 웨이팅 취소
-   * PATCH /api/waitings/{waitingId}/cancel
+   * PATCH /api/waitings/{token}/cancel
    */
   @Transactional
-  public WaitingResponse cancelByUser(Long waitingId, Long loginUserId) {
-    Waiting waiting = findWaitingOrThrow(waitingId);
-    if (!waiting.isOwnedBy(loginUserId)) {
-      throw new BusinessException(ErrorCode.ACCESS_DENIED);
-    }
-    applyCancel(waiting);
-    log.info("Waiting cancelled by user. waitingId={}, userId={}", waitingId, loginUserId);
-    return WaitingResponse.from(waiting);
+  public WaitingResponse cancelByUser(String token, Long loginUserId) {
+    WaitingTokenData data = findTokenDataOrThrow(token);
+
+    waitingRedis.cancel(token, loginUserId, data.sessionId());
+    log.info("Waiting cancelled by user. token={}, userId={}", token, loginUserId);
+
+    notifyNearCallIfThreshold(data.sessionId());
+
+    WaitingTokenData updated = waitingRedis.findByToken(token);
+    return WaitingResponse.of(token, updated == null ? data : updated);
   }
 
+  /* ================== 점주 ================== */
+
   /*
-   * 점주: 세션의 웨이팅 목록 조회
+   * 점주: 세션의 활성 웨이팅 목록 조회
    * GET /api/owners/restaurants/{restaurantId}/waitings
    */
   public List<WaitingResponse> getOwnerWaitings(Long restaurantId, Long loginUserId) {
     verifyOwnership(restaurantId, loginUserId);
 
     Long sessionId = findTodaySessionId(restaurantId);
-    return waitingRepository.findBySessionIdOrderByWaitingNumberAsc(sessionId).stream()
-        .map(WaitingResponse::from)
+    List<String> tokens = waitingRedis.listActiveTokens(sessionId);
+
+    return tokens.stream()
+        .map(token -> {
+          WaitingTokenData data = waitingRedis.findByToken(token);
+          return data == null ? null : WaitingResponse.of(token, data);
+        })
+        .filter(Objects::nonNull)
         .toList();
   }
 
   /*
    * 점주: 호출 (WAITING → CALLED)
-   * PATCH /api/owners/waiting/{waitingId}/call
+   * PATCH /api/owners/waiting/{token}/call
    */
   @Transactional
-  public WaitingResponse call(Long waitingId, Long loginUserId) {
-    Waiting waiting = findWaitingOrThrow(waitingId);
-    verifyOwnership(waiting.getRestaurantId(), loginUserId);
-    
-    LocalDateTime now = LocalDateTime.now();
-    int currentCallCount = waitingCallLogRepository.countByWaiting(waiting);
-    
-    WaitingCallLog logEntity = WaitingCallLog.builder()
-    		.waiting(waiting)
-    		.callSequence(currentCallCount + 1)
-    		.calledAt(now)
-    		.build();
-    waitingCallLogRepository.save(logEntity);
-    
-    waiting.call(now);
+  public WaitingResponse call(String token, Long loginUserId) {
+    WaitingTokenData data = findTokenDataOrThrow(token);
+    verifyOwnership(data.restaurantId(), loginUserId);
 
-    // 점주 호출 알림 (트랜잭션 묶음 — 실패 시 호출도 롤백)
-    String restaurantName = getRestaurantName(waiting.getRestaurantId());
+    waitingRedis.call(token);
+
+    /* 호출 로그 INSERT — DB 행 존재 시에만 (Worker 가 아직 sync 안 했을 수 있음) */
+    waitingRepository.findByWaitingToken(token).ifPresent(waiting -> {
+      LocalDateTime now = LocalDateTime.now();
+      int sequence = waitingCallLogRepository.countByWaiting(waiting) + 1;
+      waitingCallLogRepository.save(
+          WaitingCallLog.builder()
+              .waiting(waiting)
+              .callSequence(sequence)
+              .calledAt(now)
+              .build()
+      );
+    });
+
+    /* 호출 알림 */
+    String restaurantName = getRestaurantName(data.restaurantId());
     notificationService.notify(
-        waiting.getUserId(),
+        data.userId(),
         NotificationType.WAITING_CALLED,
         restaurantName + " 입장해주세요!"
     );
 
-    log.info("Waiting called. waitingId={}", waitingId);
-    return WaitingResponse.from(waiting);
+    log.info("Waiting called. token={}", token);
+
+    WaitingTokenData updated = waitingRedis.findByToken(token);
+    return WaitingResponse.of(token, updated == null ? data : updated);
   }
+
 
   /*
    * 점주: 취소 처리 (WAITING/CALLED → CANCELLED)
-   * PATCH /api/owners/waiting/{waitingId}/cancelled
+   * PATCH /api/owners/waiting/{token}/cancelled
    */
   @Transactional
-  public WaitingResponse cancelByOwner(Long waitingId, Long loginUserId) {
-    Waiting waiting = findWaitingOrThrow(waitingId);
-    verifyOwnership(waiting.getRestaurantId(), loginUserId);
-    applyCancel(waiting);
-    log.info("Waiting cancelled by owner. waitingId={}", waitingId);
-    return WaitingResponse.from(waiting);
+  public WaitingResponse cancelByOwner(String token, Long loginUserId) {
+    WaitingTokenData data = findTokenDataOrThrow(token);
+    verifyOwnership(data.restaurantId(), loginUserId);
+
+    waitingRedis.cancelByOwner(token, data.sessionId(), data.userId());
+    log.info("Waiting cancelled by owner. token={}", token);
+
+    notifyNearCallIfThreshold(data.sessionId());
+
+    WaitingTokenData updated = waitingRedis.findByToken(token);
+    return WaitingResponse.of(token, updated == null ? data : updated);
   }
 
   /*
    * 점주: 입장 처리 (CALLED → ENTERED)
-   * PATCH /api/owners/waiting/{waitingId}/enter
-   * PATCH /api/owners/waiting/{waitingId}/entered
-   * ※ 명세상 두 엔드포인트가 별도 존재하나, 현재 DDL 상 동일한 상태 전이.
-   * 실질적 차이가 생기면 분기, 지금은 같은 메서드 호출.
+   * PATCH /api/owners/waiting/{token}/enter
+   * PATCH /api/owners/waiting/{token}/entered
    */
   @Transactional
-  public WaitingResponse markEntered(Long waitingId, Long loginUserId) {
-    Waiting waiting = findWaitingOrThrow(waitingId);
-    verifyOwnership(waiting.getRestaurantId(), loginUserId);
+  public WaitingResponse markEntered(String token, Long loginUserId) {
+    WaitingTokenData data = findTokenDataOrThrow(token);
+    verifyOwnership(data.restaurantId(), loginUserId);
 
-    WaitingSession session = waitingSessionService.findSessionOrThrow(waiting.getSessionId());
-    waiting.enter(LocalDateTime.now());
-    session.decreaseCurrentCount();
-    waitingRedisRepository.decrementCount(session.getId()); // Redis 카운트도 감소
+    waitingRedis.enter(token, data.sessionId(), data.userId());
+    log.info("Waiting entered. token={}", token);
 
-    // 입장으로 한 자리 비었으니 새 6번째 후보에게 앞 5팀 알림 발송
-    notifyNearCallIfThreshold(waiting.getSessionId());
+    notifyNearCallIfThreshold(data.sessionId());
 
-    log.info("Waiting entered. waitingId={}", waitingId);
-    return WaitingResponse.from(waiting);
+    WaitingTokenData updated = waitingRedis.findByToken(token);
+    return WaitingResponse.of(token, updated == null ? data : updated);
   }
 
-  /*
-   * 스케줄러: CALLED 후 타임아웃된 웨이팅 자동 취소
-   * 호출자: WaitingTimeoutScheduler
-   */
-  @Transactional
-  public int cancelExpiredCalls() {
-    LocalDateTime threshold = LocalDateTime.now().minusMinutes(callTimeoutMinutes);
-    List<Waiting> expired = waitingRepository.findByStatusAndCalledAtBefore(
-        WaitingStatus.CALLED, threshold);
+  // ================== 내부 헬퍼 ==================
 
-    if (expired.isEmpty())
-      return 0;
-
-    for (Waiting w : expired) {
-      applyCancel(w);
+  private WaitingTokenData findTokenDataOrThrow(String token) {
+    WaitingTokenData data = waitingRedis.findByToken(token);
+    if (data == null) {
+      throw new BusinessException(ErrorCode.WAITING_NOT_FOUND);
     }
-
-    // 영향받은 세션마다 한 번씩 앞 5팀 알림 체크
-    expired.stream()
-        .map(Waiting::getSessionId)
-        .distinct()
-        .forEach(this::notifyNearCallIfThreshold);
-
-    log.info("Auto-cancelled {} waitings due to timeout (>{}min)", expired.size(), callTimeoutMinutes);
-    return expired.size();
-  }
-
-  /* 공통 취소 로직: 상태 전이 + 세션 카운트 감소 */
-  private void applyCancel(Waiting waiting) {
-    WaitingSession session = waitingSessionService.findSessionOrThrow(waiting.getSessionId());
-    waiting.cancel(LocalDateTime.now());
-    session.decreaseCurrentCount();
-    waitingRedisRepository.decrementCount(session.getId()); // Redis 카운트도 감소
-
-    // 취소로 자리가 비었으니 새 6번째 후보에게 앞 5팀 알림 발송
-    notifyNearCallIfThreshold(waiting.getSessionId());
-  }
-
-  /* 앞 5팀 도달 시 1회 알림 (이미 받은 사람은 스킵)
-   * - 본 작업(취소/입장 등)에 영향 안 주도록 try-catch 격리
-   */
-  private void notifyNearCallIfThreshold(Long sessionId) {
-    try {
-      List<Waiting> active = waitingRepository
-          .findBySessionIdAndStatusInOrderByWaitingNumberAsc(sessionId, ACTIVE_STATUSES);
-
-      if (active.size() <= NEAR_CALL_THRESHOLD) return;
-
-      Waiting candidate = active.get(NEAR_CALL_THRESHOLD); // index 5 = 앞에 5팀
-      if (candidate.isNearCallNotified()) return;
-
-      String restaurantName = getRestaurantName(candidate.getRestaurantId());
-      notificationService.notify(
-          candidate.getUserId(),
-          NotificationType.WAITING_NEAR_CALL,
-          restaurantName + " 입장까지 5팀 남았어요!"
-      );
-      candidate.markNearCallNotified();
-    } catch (Exception e) {
-      log.error("Failed to send near-call notification. sessionId={}", sessionId, e);
-    }
-  }
-
-  private String getRestaurantName(Long restaurantId) {
-    return restaurantRepository.findById(restaurantId)
-        .map(Restaurant::getName)
-        .orElse("매장");
-  }
-
-  private Waiting findWaitingOrThrow(Long waitingId) {
-    return waitingRepository.findById(waitingId)
-        .orElseThrow(() -> new BusinessException(ErrorCode.WAITING_NOT_FOUND));
+    return data;
   }
 
   private Long findTodaySessionId(Long restaurantId) {
@@ -304,18 +280,53 @@ public class WaitingService {
       throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
     }
   }
-  
-  public List<WaitingCallLogResponse> getCallLogs(Long waitingId, Long loginUserId) {
-	  
-	  Waiting waiting = findWaitingOrThrow(waitingId);
-	  
-	  verifyOwnership(waiting.getRestaurantId(), loginUserId);
-	  
-	  List<WaitingCallLog> logs = waitingCallLogRepository.findAllByWaitingOrderByCallSequenceAsc(waiting);
-	  
-	  return logs.stream()
-			  .map(WaitingCallLogResponse::new)
-			  .toList();
+
+  /* 앞 5팀 알림 — 활성 큐의 인덱스 5(=6번째)가 미알림이면 1회 알림. 본 작업 실패 격리. */
+  private void notifyNearCallIfThreshold(Long sessionId) {
+    try {
+      List<String> tokens = waitingRedis.listActiveTokens(sessionId);
+      if (tokens.size() <= NEAR_CALL_THRESHOLD) return;
+
+      String candidateToken = tokens.get(NEAR_CALL_THRESHOLD);
+      boolean justMarked = waitingRedis.markNearCallNotifiedIfAbsent(candidateToken);
+      if (!justMarked) return;
+
+      WaitingTokenData data = waitingRedis.findByToken(candidateToken);
+      if (data == null) return;
+
+      String restaurantName = getRestaurantName(data.restaurantId());
+      notificationService.notify(
+          data.userId(),
+          NotificationType.WAITING_NEAR_CALL,
+          restaurantName + " 입장까지 5팀 남았어요!"
+      );
+    } catch (Exception e) {
+      log.error("Failed to send near-call notification. sessionId={}", sessionId, e);
+    }
   }
-  
+
+  private String getRestaurantName(Long restaurantId) {
+    return restaurantRepository.findById(restaurantId)
+        .map(Restaurant::getName)
+        .orElse("매장");
+  }
+
+
+  /* 점주: 호출 이력 조회 */
+  public List<WaitingCallLogResponse> getCallLogs(Long waitingId, Long loginUserId) {
+    Waiting waiting = findWaitingOrThrow(waitingId);
+    verifyOwnership(waiting.getRestaurantId(), loginUserId);
+
+    List<WaitingCallLog> logs =
+        waitingCallLogRepository.findAllByWaitingOrderByCallSequenceAsc(waiting);
+
+    return logs.stream()
+        .map(WaitingCallLogResponse::new)
+        .toList();
+  }
+
+  private Waiting findWaitingOrThrow(Long waitingId) {
+    return waitingRepository.findById(waitingId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.WAITING_NOT_FOUND));
+  }
 }
