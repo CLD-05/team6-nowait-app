@@ -43,4 +43,22 @@ public class WaitingLuaScripts {
     script.setResultType(List.class);
     return script;
   }
+
+  @Bean("waitingCallScript")
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  public RedisScript<List> waitingCallScript() {
+    DefaultRedisScript script = new DefaultRedisScript<>();
+    script.setLocation(new ClassPathResource("lua/waiting/call.lua"));
+    script.setResultType(List.class);
+    return script;
+  }
+
+  @Bean("waitingCancelByOwnerScript")
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  public RedisScript<List> waitingCancelByOwnerScript() {
+    DefaultRedisScript script = new DefaultRedisScript<>();
+    script.setLocation(new ClassPathResource("lua/waiting/cancel-by-owner.lua"));
+    script.setResultType(List.class);
+    return script;
+  }
 }

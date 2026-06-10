@@ -9,8 +9,11 @@ import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /*
@@ -32,16 +35,22 @@ public class WaitingRedisLuaExecutor {
   private final RedisScript<List> registerScript;
   private final RedisScript<List> cancelScript;
   private final RedisScript<List> enterScript;
+  private final RedisScript<List> callScript;
+  private final RedisScript<List> cancelByOwnerScript;
 
   public WaitingRedisLuaExecutor(
       StringRedisTemplate redisTemplate,
       @Qualifier("waitingRegisterScript") RedisScript<List> registerScript,
       @Qualifier("waitingCancelScript") RedisScript<List> cancelScript,
-      @Qualifier("waitingEnterScript") RedisScript<List> enterScript) {
+      @Qualifier("waitingEnterScript") RedisScript<List> enterScript,
+      @Qualifier("waitingCallScript") RedisScript<List> callScript,
+      @Qualifier("waitingCancelByOwnerScript") RedisScript<List> cancelByOwnerScript) {
     this.redisTemplate = redisTemplate;
     this.registerScript = registerScript;
     this.cancelScript = cancelScript;
     this.enterScript = enterScript;
+    this.callScript = callScript;
+    this.cancelByOwnerScript = cancelByOwnerScript;
   }
 
   /* 등록 — 성공 시 (token, waitingNumber) 반환 */
@@ -124,6 +133,45 @@ public class WaitingRedisLuaExecutor {
     }
   }
 
+  /* 점주 호출 (WAITING → CALLED) */
+  public void call(String token) {
+    List<String> keys = List.of(
+        WaitingRedisKeys.token(token),
+        WaitingRedisKeys.PENDING_SYNC
+    );
+
+    List<?> result = redisTemplate.execute(
+        callScript, keys,
+        token,
+        String.valueOf(System.currentTimeMillis())
+    );
+
+    if (isFailure(result)) {
+      throw mapError(result, "call");
+    }
+  }
+
+  /* 점주 강제 취소 (본인 검증 없음 — 호출 측에서 권한 검증) */
+  public void cancelByOwner(String token, Long sessionId, Long userId) {
+    List<String> keys = List.of(
+        WaitingRedisKeys.token(token),
+        WaitingRedisKeys.queue(sessionId),
+        WaitingRedisKeys.count(sessionId),
+        WaitingRedisKeys.userActive(userId),
+        WaitingRedisKeys.PENDING_SYNC
+    );
+
+    List<?> result = redisTemplate.execute(
+        cancelByOwnerScript, keys,
+        token,
+        String.valueOf(System.currentTimeMillis())
+    );
+
+    if (isFailure(result)) {
+      throw mapError(result, "cancelByOwner");
+    }
+  }
+
   /* 토큰으로 웨이팅 상세 조회 */
   public WaitingTokenData findByToken(String token) {
     Map<Object, Object> hash = redisTemplate.opsForHash().entries(WaitingRedisKeys.token(token));
@@ -134,6 +182,50 @@ public class WaitingRedisLuaExecutor {
   public long aheadCount(Long sessionId, String token) {
     Long rank = redisTemplate.opsForZSet().rank(WaitingRedisKeys.queue(sessionId), token);
     return rank == null ? 0L : rank;
+  }
+
+  // --------- 세션 / 사용자 단위 헬퍼 ---------
+
+  /* 세션 오픈 시 카운터 초기화 */
+  public void initSession(Long sessionId) {
+    redisTemplate.opsForValue().set(
+        WaitingRedisKeys.nextNumber(sessionId), "0", SESSION_TTL);
+    redisTemplate.opsForValue().set(
+        WaitingRedisKeys.count(sessionId), "0", SESSION_TTL);
+  }
+
+  /* 세션 마감 시 키 정리 */
+  public void clearSession(Long sessionId) {
+    redisTemplate.delete(List.of(
+        WaitingRedisKeys.nextNumber(sessionId),
+        WaitingRedisKeys.count(sessionId),
+        WaitingRedisKeys.queue(sessionId)
+    ));
+  }
+
+  /* 현재 대기 팀 수 */
+  public int getCount(Long sessionId) {
+    String value = redisTemplate.opsForValue().get(WaitingRedisKeys.count(sessionId));
+    return value == null ? 0 : Integer.parseInt(value);
+  }
+
+  /* 사용자의 활성 웨이팅 토큰 (없으면 null) */
+  public String findActiveTokenOf(Long userId) {
+    return redisTemplate.opsForValue().get(WaitingRedisKeys.userActive(userId));
+  }
+
+  /* 세션의 활성 웨이팅 토큰 목록 (등록 순서) */
+  public List<String> listActiveTokens(Long sessionId) {
+    Set<String> tokens = redisTemplate.opsForZSet()
+        .range(WaitingRedisKeys.queue(sessionId), 0, -1);
+    return tokens == null ? Collections.emptyList() : new ArrayList<>(tokens);
+  }
+
+  /* 앞 N팀 알림 발송 마킹 (멱등성 보장) */
+  public boolean markNearCallNotifiedIfAbsent(String token) {
+    Boolean done = redisTemplate.opsForHash()
+        .putIfAbsent(WaitingRedisKeys.token(token), "nearCallNotified", "true");
+    return Boolean.TRUE.equals(done);  // true = 방금 마킹됨, false = 이미 마킹돼있었음
   }
 
   // --------- 내부 유틸 ---------
