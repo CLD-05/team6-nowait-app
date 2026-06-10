@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
 const USE_DUMMY = true;
-const API_BASE = '/api/v1';
+import { API_BASE } from '../lib/api';
 
 const DUMMY_STATUS = {
   waitingId: 1,

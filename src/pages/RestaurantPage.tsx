@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 
 const USE_DUMMY = true;
-const API_BASE = '/api/v1';
+import { API_BASE } from '../lib/api';
 
 const UNSPLASH: Record<string, string> = {
   KOREAN: 'https://images.unsplash.com/photo-1583224944844-5b268c057b72?w=800&q=80',
