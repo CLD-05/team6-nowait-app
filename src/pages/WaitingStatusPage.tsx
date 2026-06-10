@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
-const USE_DUMMY = true;
+const USE_DUMMY = false;
 import { API_BASE } from '../lib/api';
 
 const DUMMY_STATUS = {

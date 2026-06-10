@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import Logo from '../components/Logo';
 
-const USE_DUMMY = true;
+const USE_DUMMY = false;
 import { API_BASE } from '../lib/api';
 
 type AuthTab = 'login' | 'signup';
@@ -65,12 +65,13 @@ export default function AuthPage() {
           return;
         }
 
-        const data = (await response.json()) as {
-          accessToken: string;
-          user: unknown;
-        };
+        const data = await response.json();
         localStorage.setItem('nowait_token', data.accessToken);
-        localStorage.setItem('nowait_user', JSON.stringify(data.user));
+        localStorage.setItem('nowait_user', JSON.stringify({
+          id: data.userId,
+          name: data.name,
+          role: data.role,
+        }));
         navigate('/');
       }
     } catch {

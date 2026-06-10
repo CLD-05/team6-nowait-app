@@ -95,7 +95,7 @@ function buildDummyRestaurants(): Restaurant[] {
 }
 
 const RESTAURANTS = buildDummyRestaurants();
-const USE_DUMMY = true;
+const USE_DUMMY = false;
 
 export default function MainPage() {
   const navigate = useNavigate();
@@ -109,7 +109,7 @@ export default function MainPage() {
   useEffect(() => {
     if (USE_DUMMY) return;
     fetchRestaurants();
-  }, [category]);
+  }, [category, page]);
 
   async function fetchRestaurants() {
     setLoading(true);
@@ -120,7 +120,20 @@ export default function MainPage() {
         headers: { 'Content-Type': 'application/json' },
       });
       const data = await res.json();
-      setRestaurants2(data.content || []);
+      const list = Array.isArray(data) ? data : (data.content || []);
+
+      // API 응답 필드명 → React 타입 매핑
+      setRestaurants2(list.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        category: r.category,
+        mainMenuName: r.mainMenuName,
+        imageUrl: r.imageUrl
+          ? `http://localhost:8080${r.imageUrl}`
+          : CATEGORY_IMAGES[r.category as CategoryKey],
+        reservable: r.reservationAvailable === 'Y',
+        waitingAvailable: r.waitingAvailable === 'Y',
+      })));
     } catch (e) {
       console.error('식당 목록 조회 실패', e);
     } finally {

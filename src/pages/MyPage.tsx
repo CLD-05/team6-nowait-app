@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const USE_DUMMY = true;
+const USE_DUMMY = false;
 const API_BASE = '/api/v1';
 
 const DUMMY_RESERVATIONS = [
@@ -84,9 +84,9 @@ export default function MyPage() {
         const h = { Authorization: `Bearer ${token}` };
         const [r1, r2, r3, r4] = await Promise.all([
           fetch(`${API_BASE}/reservations/me`, { headers: h }),
-          fetch(`${API_BASE}/waiting/me`, { headers: h }),
-          fetch(`${API_BASE}/favorites`, { headers: h }),
-          fetch(`${API_BASE}/notifications`, { headers: h }),
+          fetch(`${API_BASE}/waitings/me`, { headers: h }),
+          fetch(`${API_BASE}/users/me/favorites`, { headers: h }),
+          fetch(`${API_BASE}/notifications/me`, { headers: h })
         ]);
         setReservations(await r1.json());
         setWaitings(await r2.json());
