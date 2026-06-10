@@ -69,6 +69,34 @@ public class Reservation extends BaseTimeEntity {
     @Column(name = "no_show_at")
     private LocalDateTime noShowAt;
 
+    private Reservation(String reservationToken, User user, Restaurant restaurant, Slot slot,
+        int headcount) {
+        this.reservationToken = reservationToken;
+        this.user = user;
+        this.restaurant = restaurant;
+        this.slot = slot;
+        this.headcount = headcount;
+        this.status = ReservationStatus.CONFIRMED;
+    }
+
+    /* Worker 전용 — Redis Hash 의 현재 상태로 신규 행 생성 */
+    public static Reservation register(String reservationToken,
+        User user, Restaurant restaurant, Slot slot, int headcount) {
+        return new Reservation(reservationToken, user, restaurant, slot, headcount);
+    }
+
+    /*
+     * Worker 전용 — Redis Hash 의 현재 상태로 DB 행을 동기화.
+     * 메시지가 어떤 순서로 도착해도 멱등성을 보장하기 위해 절대 상태로 덮어쓴다.
+     */
+    public void syncFromRedis(ReservationStatus status,
+        LocalDateTime visitedAt, LocalDateTime canceledAt, LocalDateTime noShowAt) {
+        this.status = status;
+        this.visitedAt = visitedAt;
+        this.canceledAt = canceledAt;
+        this.noShowAt = noShowAt;
+    }
+
     public boolean isOwnedBy(Long userId) {
         return this.user.getId().equals(userId);
     }
