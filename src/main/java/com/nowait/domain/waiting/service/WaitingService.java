@@ -1,10 +1,10 @@
 package com.nowait.domain.waiting.service;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
-import java.util.Set;
+import java.util.Objects;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,30 +12,26 @@ import com.nowait.domain.notification.service.NotificationService;
 import com.nowait.domain.notification.type.NotificationType;
 import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
 import com.nowait.domain.restaurant.entity.Restaurant;
+import com.nowait.domain.restaurant.entity.RestaurantHour;
+import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
+import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.waiting.dto.WaitingCallLogResponse;
 import com.nowait.domain.waiting.dto.WaitingRegisterRequest;
 import com.nowait.domain.waiting.dto.WaitingResponse;
-import com.nowait.domain.waiting.entity.WaitingSession;
-import com.nowait.domain.waiting.redis.WaitingRedisLuaExecutor;
-import com.nowait.domain.waiting.redis.WaitingTokenData;
 import com.nowait.domain.waiting.entity.Waiting;
 import com.nowait.domain.waiting.entity.WaitingCallLog;
 import com.nowait.domain.waiting.entity.WaitingSession;
+import com.nowait.domain.waiting.redis.WaitingRedisLuaExecutor;
+import com.nowait.domain.waiting.redis.WaitingTokenData;
 import com.nowait.domain.waiting.repository.WaitingCallLogRepository;
 import com.nowait.domain.waiting.repository.WaitingRepository;
-import com.nowait.domain.waiting.type.WaitingStatus;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.Objects;
 
 /*
  * 웨이팅 서비스 — Redis-first 아키텍처.
@@ -65,6 +61,7 @@ public class WaitingService {
   private final WaitingCallLogRepository waitingCallLogRepository;
   private final WaitingRedisLuaExecutor waitingRedis;
   private final NotificationService notificationService;
+  private final RestaurantHourRepository restaurantHourRepository;
 
   /* ================== 사용자 ================== */
 
@@ -84,6 +81,26 @@ public class WaitingService {
     }
     if ("N".equals(restaurant.getWaitingAvailable())) {
       throw new BusinessException(ErrorCode.WAITING_NOT_AVAILABLE);
+    }
+    
+    // A. 현재 '지금 이 순간'의 요일을 구하고, 3글자 Enum으로 변환
+    String currentDayName = LocalDateTime.now().getDayOfWeek().name().substring(0, 3);
+    DayOfWeek customDayOfWeek = DayOfWeek.valueOf(currentDayName);
+
+    // B. DB에서 오늘 요일에 해당하는 식당의 영업 장부 조회
+    RestaurantHour todayHourInfo = restaurantHourRepository
+        .findByRestaurantIdAndDayOfWeek(restaurantId, customDayOfWeek)
+        .orElseThrow(() -> new BusinessException(ErrorCode.OPERATING_INFO_NOT_FOUND));
+
+    // C. 🚫 오늘이 정기 휴무일('Y')인지 검증
+    if ("Y".equals(todayHourInfo.getIsRegularHoliday())) {
+        throw new BusinessException(ErrorCode.RESTAURANT_CLOSED_DAY);
+    }
+
+    // D. 🚫 지금 줄 서는 시각이 영업시간 범위 내에 있는지 검증
+    LocalTime currentTime = LocalTime.now();
+    if (currentTime.isBefore(todayHourInfo.getOpenTime()) || currentTime.isAfter(todayHourInfo.getCloseTime())) {
+    	throw new BusinessException(ErrorCode.NOT_OPERATING_TIME);
     }
 
     WaitingSession session = waitingSessionService.findSessionOrThrow(
