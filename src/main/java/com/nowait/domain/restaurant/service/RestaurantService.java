@@ -31,12 +31,18 @@ public class RestaurantService {
 	
 	@Transactional
     public Long registerRestaurant(RestaurantRegisterRequest request, Long ownerId) {
+		if (restaurantRepository.existsByOwnerIdAndIsDeleted(ownerId, "N")) {
+			throw new BusinessException(ErrorCode.OWNER_ALREADY_EXISTS);
+		}
+
         // 1. 기존 로직: 식당 정보를 먼저 저장합니다.
         Restaurant restaurant = request.toEntity(ownerId);
         Restaurant savedRestaurant = restaurantRepository.save(restaurant);
 
         // 식당이 등록될 때 월~일요일 기본 영업시간 7줄을 자동으로 깔아줍니다!
-        for (RestaurantHourRequest hourReq : request.getRestaurantHours()) {
+		for (RestaurantHourRequest hourReq : request.getRestaurantHours() == null
+				? List.<RestaurantHourRequest>of()
+				: request.getRestaurantHours()) {
         	
         	// 💡 정기 휴무('Y')인 요일은 시간이 누락될 수 있으므로, 안전하게 00:00(MIDNIGHT)으로 메워주는 방어 코드
             boolean isHoliday = "Y".equals(hourReq.getIsRegularHoliday());
@@ -81,15 +87,27 @@ public class RestaurantService {
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
 		return RestaurantDetailResponse.from(restaurant);
 	}
+
+	public RestaurantDetailResponse getMyRestaurant(Long ownerId) {
+		Restaurant restaurant = restaurantRepository.findFirstByOwnerIdAndIsDeleted(ownerId, "N")
+				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+		return RestaurantDetailResponse.from(restaurant);
+	}
 	
 	@Transactional
-	public void updateRestaurant(Long restaurantId, RestaurantUpdateRequest request, Long owenrId) {
+	public void updateRestaurant(Long restaurantId, RestaurantUpdateRequest request, Long ownerId) {
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
 		
-		if (!restaurant.getOwnerId().equals(owenrId)) {
+		if (!restaurant.getOwnerId().equals(ownerId)) {
 			throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
 		}
+
+		restaurant.updateDetails(
+				request.getName(), request.getCategory(), request.getAddress(), request.getPhoneNumber(),
+				request.getDescription(), request.getImageUrl(), request.getMainMenuName(),
+				request.getParkingAvailable(), request.getWifiAvailable(), request.getMultilingualMenuAvailable(),
+				request.getStatus(), request.getReservationAvailable(), request.getWaitingAvailable());
 	}
 	
 	@Transactional

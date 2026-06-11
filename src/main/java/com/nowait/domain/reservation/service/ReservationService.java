@@ -24,6 +24,8 @@ import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.slot.entity.Slot;
 import com.nowait.domain.slot.repository.SlotRepository;
+import com.nowait.domain.user.entity.User;
+import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
@@ -53,6 +55,7 @@ public class ReservationService {
     private final RestaurantHourRepository restaurantHourRepository;
     private final SlotRepository slotRepository;
     private final RestaurantOwnerRepository restaurantOwnerRepository;
+    private final UserRepository userRepository;
     private final ReservationRedisLuaExecutor reservationRedis;
 
     /* ================== 사용자 ================== */
@@ -61,6 +64,7 @@ public class ReservationService {
      * 예약 생성 — POST /api/v1/reservations
      * 검증은 DB, 생성은 Redis Lua
      */
+    @Transactional
     public ReservationResponse createReservation(Long userId, ReservationCreateRequest request) {
         Restaurant restaurant = restaurantRepository.findById(request.restaurantId())
             .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
@@ -117,11 +121,13 @@ public class ReservationService {
         log.info("Reservation created. token={}, userId={}, slotId={}",
             result.token(), userId, slot.getId());
 
-        ReservationTokenData data = reservationRedis.findByToken(result.token());
-        return ReservationResponse.fromRedis(
-            result.token(), data,
-            restaurant.getName(), slot.getSlotDate(), slot.getSlotTime()
-        );
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        Reservation reservation = Reservation.register(result.token(), user, restaurant, slot, headcount);
+        reservationRepository.save(reservation);
+        slot.decrease();
+
+        return ReservationResponse.from(reservation);
     }
 
     /*
@@ -158,12 +164,14 @@ public class ReservationService {
     /*
      * 예약 취소 (사용자) — PATCH /api/v1/reservations/{token}/cancel
      */
+    @Transactional
     public ReservationResponse cancelReservation(Long userId, String token) {
         ReservationTokenData data = findTokenDataOrThrow(token);
         reservationRedis.cancel(token, userId, data.slotId());
         log.info("Reservation cancelled by user. token={}, userId={}", token, userId);
 
         ReservationTokenData updated = reservationRedis.findByToken(token);
+        syncDatabaseStatus(token, updated == null ? data : updated);
         return buildFromRedis(token, updated == null ? data : updated);
     }
 
@@ -172,6 +180,7 @@ public class ReservationService {
     /*
      * 방문 완료 처리 (점주) — PATCH /api/v1/owner/reservations/{token}/visit
      */
+    @Transactional
     public ReservationResponse markVisited(Long ownerUserId, String token) {
         ReservationTokenData data = findTokenDataOrThrow(token);
         verifyOwnership(data.restaurantId(), ownerUserId);
@@ -180,12 +189,14 @@ public class ReservationService {
         log.info("Reservation visited. token={}", token);
 
         ReservationTokenData updated = reservationRedis.findByToken(token);
+        syncDatabaseStatus(token, updated == null ? data : updated);
         return buildFromRedis(token, updated == null ? data : updated);
     }
 
     /*
      * 노쇼 처리 (점주) — PATCH /api/v1/owner/reservations/{token}/noshow
      */
+    @Transactional
     public ReservationResponse markNoShow(Long ownerUserId, String token) {
         ReservationTokenData data = findTokenDataOrThrow(token);
         verifyOwnership(data.restaurantId(), ownerUserId);
@@ -194,6 +205,7 @@ public class ReservationService {
         log.info("Reservation no-show. token={}", token);
 
         ReservationTokenData updated = reservationRedis.findByToken(token);
+        syncDatabaseStatus(token, updated == null ? data : updated);
         return buildFromRedis(token, updated == null ? data : updated);
     }
 
@@ -221,6 +233,28 @@ public class ReservationService {
         LocalDate slotDate = slot == null ? null : slot.getSlotDate();
         LocalTime slotTime = slot == null ? null : slot.getSlotTime();
         return ReservationResponse.fromRedis(token, data, restaurantName, slotDate, slotTime);
+    }
+
+    private void syncDatabaseStatus(String token, ReservationTokenData data) {
+        reservationRepository.findByReservationToken(token).ifPresent(reservation -> {
+            boolean restoreSlot = reservation.getStatus() == com.nowait.domain.reservation.type.ReservationStatus.CONFIRMED
+                && data.status() == com.nowait.domain.reservation.type.ReservationStatus.CANCELLED;
+            reservation.syncFromRedis(
+                data.status(),
+                toLocalDateTime(data.visitedAt()),
+                toLocalDateTime(data.canceledAt()),
+                toLocalDateTime(data.noShowAt())
+            );
+            if (restoreSlot) {
+                reservation.getSlot().increase();
+            }
+        });
+    }
+
+    private static LocalDateTime toLocalDateTime(Long millis) {
+        if (millis == null) return null;
+        return LocalDateTime.ofInstant(
+            java.time.Instant.ofEpochMilli(millis), ZoneId.systemDefault());
     }
 
     private static long toEpochMillis(LocalDate date, LocalTime time) {

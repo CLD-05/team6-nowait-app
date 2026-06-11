@@ -93,6 +93,25 @@ public class Restaurant extends BaseTimeEntity {
 		this.imageUrl = imageUrl;
 	}
 
+	public void updateDetails(String name, RestaurantCategory category, String address, String phoneNumber,
+			String description, String imageUrl, String mainMenuName, String parkingAvailable,
+			String wifiAvailable, String multilingualMenuAvailable, RestaurantStatus status,
+			String reservationAvailable, String waitingAvailable) {
+		this.name = name;
+		this.category = category;
+		this.address = address;
+		this.phoneNumber = phoneNumber;
+		this.description = description;
+		this.imageUrl = imageUrl;
+		this.mainMenuName = mainMenuName;
+		this.parkingAvailable = parkingAvailable;
+		this.wifiAvailable = wifiAvailable;
+		this.multilingualMenuAvailable = multilingualMenuAvailable;
+		this.status = status;
+		this.reservationAvailable = reservationAvailable;
+		this.waitingAvailable = waitingAvailable;
+	}
+
 	public void deleteRestaurant() {
 		this.isDeleted = "Y";
 		this.status = RestaurantStatus.PERMANENTLY_CLOSED; // 💡 영업 상태도 영구 폐업으로 자동 전환!

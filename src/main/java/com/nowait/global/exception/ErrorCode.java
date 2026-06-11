@@ -51,7 +51,7 @@ public enum ErrorCode {
     DUPLICATE_RESERVATION(HttpStatus.CONFLICT, "RS409", "이미 해당 슬롯에 예약이 존재합니다."),
     ALREADY_CANCELLED_RESERVATION(HttpStatus.CONFLICT, "RS410", "이미 취소된 예약입니다."),
     CANNOT_CANCEL_RESERVATION(HttpStatus.CONFLICT, "RS411", "취소할 수 없는 예약 상태입니다."),
-    DUPLICATE_WAITING(HttpStatus.CONFLICT, "W409", "이미 해당 식당의 웨이팅이 등록되어 있습니다."),
+    DUPLICATE_WAITING(HttpStatus.CONFLICT, "W409", "이미 웨이팅이 등록되어 있습니다. 기존 웨이팅을 취소 후 다시 시도해주세요."),
     WAITING_COUNT_EXCEEDED(HttpStatus.CONFLICT, "W410", "웨이팅 최대 팀 수를 초과했습니다."),
     ALREADY_PROCESSED_WAITING(HttpStatus.CONFLICT, "W411", "이미 처리된 웨이팅입니다."),
     WAITING_SESSION_ALREADY_EXISTS(HttpStatus.CONFLICT, "WS409", "오늘 이미 오픈된 세션이 있습니다."),

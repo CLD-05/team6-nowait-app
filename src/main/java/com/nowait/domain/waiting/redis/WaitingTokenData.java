@@ -37,7 +37,7 @@ public record WaitingTokenData(
         parseLong(hash.get("restaurantId")),
         parseInt(hash.get("waitingNumber")),
         parseInt(hash.get("partySize")),
-        WaitingStatus.valueOf(String.valueOf(hash.get("status"))),
+        WaitingStatus.valueOf(toStr(hash.get("status"))),
         parseLong(hash.get("registeredAt")),
         parseLongOrNull(hash.get("calledAt")),
         parseLongOrNull(hash.get("enteredAt")),
@@ -46,16 +46,25 @@ public record WaitingTokenData(
   }
 
   private static Long parseLong(Object o) {
-    return o == null ? null : Long.parseLong(String.valueOf(o));
+    if (o == null) return null;
+    if (o instanceof Number n) return n.longValue();
+    return Long.parseLong(toStr(o));
   }
 
   private static Long parseLongOrNull(Object o) {
     if (o == null) return null;
-    String s = String.valueOf(o);
+    String s = toStr(o);
     return s.isBlank() ? null : Long.parseLong(s);
   }
 
   private static int parseInt(Object o) {
-    return Integer.parseInt(String.valueOf(o));
+    if (o == null) return 0;
+    if (o instanceof Number n) return n.intValue();
+    return Integer.parseInt(toStr(o));
+  }
+
+  private static String toStr(Object o) {
+    if (o instanceof byte[] bytes) return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+    return String.valueOf(o);
   }
 }

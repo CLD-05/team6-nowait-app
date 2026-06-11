@@ -133,3 +133,74 @@ ON DUPLICATE KEY UPDATE
     wifi_available = VALUES(wifi_available),
     multilingual_menu_available = VALUES(multilingual_menu_available),
     updated_at = CURRENT_TIMESTAMP;
+
+-- Keep seed restaurants available for local reservation and waiting tests.
+UPDATE restaurant
+SET status = 'OPEN',
+    reservation_available = 'Y',
+    waiting_available = 'Y'
+WHERE restaurant_id BETWEEN 1 AND 100;
+
+-- Weekly operating hours for seed restaurants (one regular holiday per restaurant)
+CREATE TABLE IF NOT EXISTS restaurant_hours (
+    restaurant_hours_id BIGINT NOT NULL AUTO_INCREMENT,
+    restaurant_id BIGINT NOT NULL,
+    day_of_week VARCHAR(10) NOT NULL,
+    open_time TIME NOT NULL,
+    close_time TIME NOT NULL,
+    is_regular_holiday CHAR(1) NOT NULL DEFAULT 'N',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (restaurant_hours_id),
+    UNIQUE KEY uk_restaurant_hours_day (restaurant_id, day_of_week),
+    CONSTRAINT fk_restaurant_hours_restaurant
+        FOREIGN KEY (restaurant_id) REFERENCES restaurant (restaurant_id)
+);
+
+INSERT INTO restaurant_hours (
+    restaurant_id,
+    day_of_week,
+    open_time,
+    close_time,
+    is_regular_holiday,
+    created_at,
+    updated_at
+)
+SELECT
+    r.restaurant_id,
+    days.day_of_week,
+    CASE
+        WHEN MOD(r.restaurant_id, 7) = days.day_number THEN '00:00:00'
+        WHEN MOD(r.restaurant_id, 3) = 0 THEN '10:00:00'
+        WHEN MOD(r.restaurant_id, 3) = 1 THEN '11:00:00'
+        ELSE '11:30:00'
+    END AS open_time,
+    CASE
+        WHEN MOD(r.restaurant_id, 7) = days.day_number THEN '00:00:00'
+        WHEN MOD(r.restaurant_id, 3) = 0 THEN '20:00:00'
+        WHEN MOD(r.restaurant_id, 3) = 1 THEN '21:00:00'
+        ELSE '22:00:00'
+    END AS close_time,
+    CASE
+        WHEN MOD(r.restaurant_id, 7) = days.day_number THEN 'Y'
+        ELSE 'N'
+    END AS is_regular_holiday,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM restaurant r
+CROSS JOIN (
+    SELECT 'MON' AS day_of_week, 0 AS day_number
+    UNION ALL SELECT 'TUE', 1
+    UNION ALL SELECT 'WED', 2
+    UNION ALL SELECT 'THU', 3
+    UNION ALL SELECT 'FRI', 4
+    UNION ALL SELECT 'SAT', 5
+    UNION ALL SELECT 'SUN', 6
+) days
+WHERE r.restaurant_id BETWEEN 1 AND 100
+  AND NOT EXISTS (
+      SELECT 1
+      FROM restaurant_hours rh
+      WHERE rh.restaurant_id = r.restaurant_id
+        AND rh.day_of_week = days.day_of_week
+  );

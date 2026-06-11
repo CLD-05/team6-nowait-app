@@ -22,7 +22,7 @@ if status ~= 'CONFIRMED' then
   return { 0, 'INVALID_STATUS_TRANSITION' }
 end
 
-redis.call('HSET', KEYS[1], 'status', 'NO_SHOW', 'noShowAt', ARGV[2])
+redis.call('HMSET', KEYS[1], 'status', 'NO_SHOW', 'noShowAt', ARGV[2])
 redis.call('ZREM', KEYS[2], ARGV[1])
 redis.call('ZREM', KEYS[4], ARGV[1])
 

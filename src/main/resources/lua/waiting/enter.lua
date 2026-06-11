@@ -22,7 +22,7 @@ if status ~= 'CALLED' and status ~= 'WAITING' then
   return { 0, 'INVALID_STATUS_TRANSITION' }
 end
 
-redis.call('HSET', KEYS[1], 'status', 'ENTERED', 'enteredAt', ARGV[2])
+redis.call('HMSET', KEYS[1], 'status', 'ENTERED', 'enteredAt', ARGV[2])
 
 redis.call('ZREM', KEYS[2], ARGV[1])
 

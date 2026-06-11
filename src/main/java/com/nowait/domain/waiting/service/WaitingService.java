@@ -127,6 +127,10 @@ public class WaitingService {
     notifyNearCallIfThreshold(session.getId());
 
     WaitingTokenData data = waitingRedis.findByToken(result.token());
+    if (data == null) {
+      log.error("Waiting hash missing from Redis immediately after registration. token={}", result.token());
+      throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
+    }
     return WaitingResponse.of(result.token(), data, 0L);
   }
 

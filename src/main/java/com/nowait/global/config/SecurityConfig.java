@@ -42,10 +42,11 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                		.requestMatchers(
-                			    "/api/v1/auth/signup",
-                			    "/api/v1/auth/login")
-                			.permitAll()
+                        .requestMatchers(
+                            "/api/v1/auth/signup",
+                            "/api/v1/auth/signup/owner",
+                            "/api/v1/auth/login")
+                        .permitAll()
                 		    .requestMatchers("/api/v1/restaurants/**").permitAll()
                 		    .requestMatchers("/api/v1/restaurants/*/waiting-session").permitAll()
                 		    .requestMatchers("/api/v1/restaurants/*/reviews").permitAll()  // 추가

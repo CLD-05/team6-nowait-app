@@ -8,6 +8,11 @@ public enum NotificationType {
     /* 앞 5팀 — 폴링으로 충분 */
     WAITING_NEAR_CALL(false),
 
+    /* 기존 로컬 데이터 및 일반 알림 호환 */
+    WAITING_REGISTERED(false),
+    WAITING_CANCELLED(false),
+    REVIEW_REQUEST(false),
+
     RESERVATION_CONFIRMED(false),
     RESERVATION_CANCELLED(false);
 

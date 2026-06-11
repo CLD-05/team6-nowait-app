@@ -19,10 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.nowait.domain.restaurant.dto.RestaurantDetailResponse;
 import com.nowait.domain.restaurant.dto.RestaurantImageRequest;
+import com.nowait.domain.restaurant.dto.RestaurantHourRequest;
 import com.nowait.domain.restaurant.dto.RestaurantListResponse;
 import com.nowait.domain.restaurant.dto.RestaurantRegisterRequest;
 import com.nowait.domain.restaurant.dto.RestaurantUpdateRequest;
 import com.nowait.domain.restaurant.service.RestaurantService;
+import com.nowait.domain.restaurant.service.RestaurantHourService;
 import com.nowait.domain.restaurant.type.RestaurantCategory;
 import com.nowait.global.security.principal.CustomUserDetails;
 
@@ -35,7 +37,9 @@ import lombok.RequiredArgsConstructor;
 public class RestaurantController {
 	
 	private final RestaurantService restaurantService;
+	private final RestaurantHourService restaurantHourService;
 	
+	@PreAuthorize("hasRole('OWNER')")
 	@PostMapping
 	public ResponseEntity<Long> registerRestaurant(
 			@Valid @RequestBody RestaurantRegisterRequest request,
@@ -61,6 +65,14 @@ public class RestaurantController {
 		}
 		return ResponseEntity.ok(responses);
 	}
+
+	@PreAuthorize("hasRole('OWNER')")
+	@GetMapping("/mine")
+	public ResponseEntity<RestaurantDetailResponse> getMyRestaurant(
+			@AuthenticationPrincipal CustomUserDetails userDetails
+			) {
+		return ResponseEntity.ok(restaurantService.getMyRestaurant(userDetails.getUserId()));
+	}
 	
 	@GetMapping("/{restaurantId}")
 	public ResponseEntity<RestaurantDetailResponse> getRestaurantDetail(
@@ -69,7 +81,15 @@ public class RestaurantController {
 		RestaurantDetailResponse response = restaurantService.getRestaurantDetail(restaurantId);
 		return ResponseEntity.ok(response);
 	}
+
+	@GetMapping("/{restaurantId}/hours")
+	public ResponseEntity<List<RestaurantHourRequest>> getRestaurantHours(
+			@PathVariable("restaurantId") Long restaurantId
+			) {
+		return ResponseEntity.ok(restaurantHourService.getRestaurantHours(restaurantId));
+	}
 	
+	@PreAuthorize("hasRole('OWNER')")
 	@PutMapping("/{restaurantId}")
 	public ResponseEntity<Void> updateRestaurant(
 			@PathVariable("restaurantId") Long restaurantId,

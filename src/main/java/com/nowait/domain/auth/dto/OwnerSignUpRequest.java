@@ -1,7 +1,6 @@
 package com.nowait.domain.auth.dto;
 
 import com.nowait.domain.restaurant.type.RestaurantCategory;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -17,7 +16,7 @@ public record OwnerSignUpRequest(
 
     @NotBlank(message = "이름은 필수입니다.") @Size(max = 50, message = "이름은 50자 이하여야 합니다.") String name,
 
-    @NotNull(message = "식당 정보는 필수입니다.") @Valid RestaurantInfo restaurant) {
+    RestaurantInfo restaurant) {
   public record RestaurantInfo(
 
       @NotBlank(message = "상호명은 필수입니다.") @Size(max = 100, message = "상호명은 100자 이하여야 합니다.") String restaurantName,

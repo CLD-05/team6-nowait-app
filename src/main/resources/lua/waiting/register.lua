@@ -39,7 +39,7 @@ local waitingNumber = redis.call('INCR', KEYS[1])
 redis.call('ZADD', KEYS[3], ARGV[7], ARGV[6])
 
 -- 5) Hash 저장
-redis.call('HSET', KEYS[4],
+redis.call('HMSET', KEYS[4],
   'userId',        ARGV[1],
   'sessionId',     ARGV[2],
   'restaurantId',  ARGV[3],

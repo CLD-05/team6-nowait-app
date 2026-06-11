@@ -4,6 +4,8 @@ import com.nowait.domain.notification.type.NotificationType;
 import com.nowait.domain.user.entity.User;
 import com.nowait.global.common.BaseTimeEntity;
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -32,7 +34,8 @@ public class Notification extends BaseTimeEntity {
     private User user;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 40)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false, length = 40, columnDefinition = "varchar(40)")
     private NotificationType type;
 
     @Column(columnDefinition = "TEXT")

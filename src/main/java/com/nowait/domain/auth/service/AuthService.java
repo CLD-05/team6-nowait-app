@@ -80,7 +80,8 @@ public class AuthService {
 
     log.info("User logged in. userId={}", user.getId());
 
-    return TokenResponse.bearer(accessToken, user.getId(), user.getName(), user.getRole());
+    return TokenResponse.bearer(
+        accessToken, user.getId(), user.getEmail(), user.getName(), user.getRole());
   }
 
   private void validateEmailNotDuplicated(String email) {

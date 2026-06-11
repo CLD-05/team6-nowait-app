@@ -37,7 +37,7 @@ end
 redis.call('ZADD', KEYS[2], ARGV[7], ARGV[6])
 
 -- 4) 토큰 Hash
-redis.call('HSET', KEYS[3],
+redis.call('HMSET', KEYS[3],
   'userId',           ARGV[1],
   'restaurantId',     ARGV[2],
   'slotId',           ARGV[3],

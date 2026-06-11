@@ -29,7 +29,7 @@ if status ~= 'CONFIRMED' then
   return { 0, 'ALREADY_PROCESSED' }
 end
 
-redis.call('HSET', KEYS[1], 'status', 'CANCELLED', 'canceledAt', ARGV[3])
+redis.call('HMSET', KEYS[1], 'status', 'CANCELLED', 'canceledAt', ARGV[3])
 redis.call('ZREM', KEYS[2], ARGV[1])
 redis.call('ZREM', KEYS[5], ARGV[1])
 
