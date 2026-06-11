@@ -2,6 +2,7 @@ package com.nowait.domain.waiting.service;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -132,6 +133,36 @@ public class WaitingService {
       throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
     }
     return WaitingResponse.of(result.token(), data, 0L);
+  }
+
+  /*
+   * 사용자: 내 웨이팅 전체 이력 조회 (활성 + DB 저장분)
+   * GET /api/v1/waitings/me/history
+   *
+   * 활성 웨이팅(Redis)을 맨 앞에 두고, Worker 가 DB 에 sync 한 이력을 뒤에 붙인다.
+   * Worker 가 꺼져 있으면 DB 부분은 비어 있을 수 있다.
+   */
+  public List<WaitingResponse> getMyWaitingHistory(Long loginUserId) {
+    String activeToken = waitingRedis.findActiveTokenOf(loginUserId);
+    List<WaitingResponse> result = new ArrayList<>();
+
+    // 현재 Redis 에 있는 활성 웨이팅 (있으면 맨 앞에)
+    if (activeToken != null) {
+      WaitingTokenData data = waitingRedis.findByToken(activeToken);
+      if (data != null) {
+        long ahead = waitingRedis.aheadCount(data.sessionId(), activeToken);
+        result.add(WaitingResponse.of(activeToken, data, ahead));
+      }
+    }
+
+    // DB 이력 (Worker sync 분) — 활성 토큰과 중복 제거
+    waitingRepository.findByUserIdOrderByRegisteredAtDesc(loginUserId)
+        .stream()
+        .filter(w -> activeToken == null || !activeToken.equals(w.getWaitingToken()))
+        .map(WaitingResponse::from)
+        .forEach(result::add);
+
+    return result;
   }
 
   /*

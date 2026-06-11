@@ -9,7 +9,7 @@ public enum ErrorCode {
     // 400 Bad Request
 	RESTAURANT_NOT_OPEN(HttpStatus.BAD_REQUEST, "R400", "현재 매장이 영업 중(OPEN) 상태가 아닙니다."),
 	WAITING_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "W400", "현재 매장이 웨이팅 기능을 제공하지 않는 상태입니다."),
-	RESTAURANT_CLOSED_DAY(HttpStatus.BAD_REQUEST, "RH400", "해당 날짜는 식당의 정기 휴무일입니다."),
+	RESTAURANT_CLOSED_DAY(HttpStatus.BAD_REQUEST, "RH400", "오늘은 정기 휴무일입니다."),
     NOT_OPERATING_TIME(HttpStatus.BAD_REQUEST, "RH401", "식당 영업시간 외에는 예약이 불가능합니다."),
 	RESERVATION_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "RV400", "현재 매장이 예약 기능을 제공하지 않는 상태입니다."),
 	INVALID_MIN_HEADCOUNT(HttpStatus.BAD_REQUEST, "RV401", "예약 최소 인원보다 적은 인원입니다."),

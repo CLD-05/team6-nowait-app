@@ -101,6 +101,19 @@ public class RestaurantController {
 	}
 	
 	@PreAuthorize("hasRole('OWNER')")
+	@PatchMapping("/{restaurantId}/status")
+	public ResponseEntity<Void> updateStatus(
+			@PathVariable Long restaurantId,
+			@RequestBody java.util.Map<String, String> body,
+			@AuthenticationPrincipal CustomUserDetails userDetails
+	) {
+		com.nowait.domain.restaurant.type.RestaurantStatus status =
+				com.nowait.domain.restaurant.type.RestaurantStatus.valueOf(body.get("status"));
+		restaurantService.updateStatus(restaurantId, status, userDetails.getUserId());
+		return ResponseEntity.ok().build();
+	}
+
+	@PreAuthorize("hasRole('OWNER')")
     @DeleteMapping("/{restaurantId}")
     public ResponseEntity<String> deleteRestaurant(
             @PathVariable Long restaurantId,

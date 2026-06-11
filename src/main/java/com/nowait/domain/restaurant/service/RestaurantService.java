@@ -16,6 +16,7 @@ import com.nowait.domain.restaurant.entity.RestaurantHour;
 import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
 import com.nowait.domain.restaurant.type.RestaurantCategory;
+import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
@@ -110,6 +111,16 @@ public class RestaurantService {
 				request.getStatus(), request.getReservationAvailable(), request.getWaitingAvailable());
 	}
 	
+	@Transactional
+	public void updateStatus(Long restaurantId, RestaurantStatus status, Long ownerId) {
+		Restaurant restaurant = restaurantRepository.findById(restaurantId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+		if (!restaurant.getOwnerId().equals(ownerId)) {
+			throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
+		}
+		restaurant.updateStatus(status);
+	}
+
 	@Transactional
 	public void deleteRestaurant(Long restaurantId, Long ownerId) {
 		

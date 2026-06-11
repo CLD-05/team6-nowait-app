@@ -32,12 +32,20 @@ public class WaitingController {
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
-  /* 사용자: 내 웨이팅 조회 */
+  /* 사용자: 내 웨이팅 조회 (단건 — WaitingStatusPage 용) */
   @PreAuthorize("isAuthenticated()")
   @GetMapping("/api/v1/waitings/me")
   public ResponseEntity<WaitingResponse> getMyWaiting(
       @AuthenticationPrincipal CustomUserDetails principal) {
     return ResponseEntity.ok(waitingService.getMyWaiting(principal.getUserId()));
+  }
+
+  /* 사용자: 내 웨이팅 전체 이력 조회 (마이페이지 탭 용) */
+  @PreAuthorize("isAuthenticated()")
+  @GetMapping("/api/v1/waitings/me/history")
+  public ResponseEntity<List<WaitingResponse>> getMyWaitingHistory(
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    return ResponseEntity.ok(waitingService.getMyWaitingHistory(principal.getUserId()));
   }
 
   /* 사용자: 내 웨이팅 취소 (토큰 기반) */
