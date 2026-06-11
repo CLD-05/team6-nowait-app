@@ -32,11 +32,11 @@ public class WaitingController {
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
-  /* 사용자: 내 웨이팅 조회 */
+  /* 사용자: 내 활성 웨이팅 목록 조회 (여러 식당 동시 등록 가능) */
   @GetMapping("/api/waitings/me")
-  public ResponseEntity<WaitingResponse> getMyWaiting(
+  public ResponseEntity<List<WaitingResponse>> getMyWaitings(
       @AuthenticationPrincipal CustomUserDetails principal) {
-    return ResponseEntity.ok(waitingService.getMyWaiting(principal.getUserId()));
+    return ResponseEntity.ok(waitingService.getMyWaitings(principal.getUserId()));
   }
 
   /* 사용자: 내 웨이팅 취소 (토큰 기반) */
