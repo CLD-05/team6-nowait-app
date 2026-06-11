@@ -1,11 +1,25 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { API_BASE, request } from '../lib/api';
 
 const USE_DUMMY = false;
-import { API_BASE } from '../lib/api';
+
+type WaitingStatus = {
+  waitingToken: string;
+  restaurantId: number;
+  restaurantName?: string;
+  waitingNumber: number;
+  partySize: number;
+  status: string;
+  aheadCount: number;
+  totalWaiting: number;
+  estimatedMinutes: number;
+  registeredAt: string;
+};
 
 const DUMMY_STATUS = {
-  waitingId: 1,
+  waitingToken: 'waiting-1',
+  restaurantId: 1,
   restaurantName: '미진 1호점',
   waitingNumber: 8,
   partySize: 2,
@@ -16,34 +30,60 @@ const DUMMY_STATUS = {
   registeredAt: '12:30',
 };
 
+function formatDateTime(raw: string): string {
+  if (!raw) return '';
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return raw;
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 export default function WaitingStatusPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<WaitingStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState('');
   const [pulse, setPulse] = useState(false);
-  const POLL_SECONDS = 30;
-  const [countdown, setCountdown] = useState(POLL_SECONDS);
+  const [sseConnected, setSseConnected] = useState(false);
+  const esRef = useRef<EventSource | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
       if (USE_DUMMY) {
         await new Promise(r => setTimeout(r, 400));
         // 더미: 랜덤으로 aheadCount 변화
-        setData((prev: any) => prev
+        setData(prev => prev
           ? { ...prev, aheadCount: Math.max(0, prev.aheadCount - Math.round(Math.random())) }
           : DUMMY_STATUS
         );
       } else {
-        const token = localStorage.getItem('nowait_token');
-        const res = await fetch(`${API_BASE}/waiting/${id}/status`, {
-          headers: { Authorization: `Bearer ${token}` },
+        let waiting: Omit<WaitingStatus, 'restaurantName' | 'totalWaiting' | 'estimatedMinutes'>;
+        try {
+          waiting = await request<Omit<WaitingStatus, 'restaurantName' | 'totalWaiting' | 'estimatedMinutes'>>('/waitings/me');
+        } catch {
+          setData(null);
+          return;
+        }
+
+        if (id && waiting.waitingToken !== id) {
+          setData(null);
+          return;
+        }
+
+        const restaurantResponse = await fetch(`${API_BASE}/restaurants/${waiting.restaurantId}`);
+        const restaurant = restaurantResponse.ok
+          ? await restaurantResponse.json() as { name?: string }
+          : null;
+        const aheadCount = waiting.aheadCount ?? 0;
+        const registeredAt = formatDateTime(waiting.registeredAt);
+        setData({
+          ...waiting,
+          aheadCount,
+          restaurantName: restaurant?.name,
+          totalWaiting: aheadCount + 1,
+          estimatedMinutes: aheadCount * 5,
+          registeredAt,
         });
-        setData(await res.json());
       }
-      const now = new Date();
-      setLastUpdated(`${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`);
       setPulse(true);
       setTimeout(() => setPulse(false), 600);
     } finally {
@@ -55,35 +95,63 @@ export default function WaitingStatusPage() {
   useEffect(() => {
     const token = localStorage.getItem('nowait_token');
     if (!token) { navigate('/auth'); return; }
-    fetchStatus();
-  }, []);
+    void fetchStatus();
+  }, [fetchStatus, navigate]);
 
-  // 폴링 (30초마다 자동 갱신)
+  // SSE 연결 — 웨이팅 상태 변경 시 서버가 push, 폴링 없이 즉시 갱신
   useEffect(() => {
-    const pollInterval = setInterval(() => {
-      fetchStatus();
-      setCountdown(POLL_SECONDS);
-    }, POLL_SECONDS * 1000);
-    return () => clearInterval(pollInterval);
+    const token = localStorage.getItem('nowait_token');
+    if (!token) return;
+
+    let es: EventSource | null = null;
+
+    const connect = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/notifications/stream/ticket`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const { ticket } = await res.json() as { ticket: string };
+
+        es = new EventSource(`${API_BASE}/notifications/stream?ticket=${ticket}`);
+        esRef.current = es;
+
+        es.addEventListener('connect', () => setSseConnected(true));
+
+        es.addEventListener('notification', (e: MessageEvent) => {
+          try {
+            const payload = JSON.parse(e.data) as { type: string };
+            if (
+              payload.type === 'WAITING_CALLED' ||
+              payload.type === 'WAITING_NEAR_CALL'
+            ) {
+              void fetchStatus();
+            }
+          } catch { /* 파싱 실패 무시 */ }
+        });
+
+        es.onerror = () => {
+          setSseConnected(false);
+          es?.close();
+          esRef.current = null;
+        };
+      } catch { /* 연결 실패 무시 */ }
+    };
+
+    void connect();
+    return () => {
+      es?.close();
+      esRef.current = null;
+      setSseConnected(false);
+    };
   }, [fetchStatus]);
-
-  // 카운트다운
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown(prev => prev <= 1 ? POLL_SECONDS : prev - 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   async function cancelWaiting() {
     if (!confirm('웨이팅을 취소하시겠어요?')) return;
     try {
       if (!USE_DUMMY) {
-        const token = localStorage.getItem('nowait_token');
-        await fetch(`${API_BASE}/waiting/${id}/cancel`, {
-          method: 'PATCH',
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await request(`/waitings/${id}/cancel`, { method: 'PATCH' });
       }
       alert('웨이팅이 취소됐어요.');
       navigate('/mypage');
@@ -107,9 +175,11 @@ export default function WaitingStatusPage() {
     : 100;
   const isCalled = data.status === 'CALLED';
   const isEntered = data.status === 'ENTERED';
+  const isCancelled = data.status === 'CANCELLED';
+  const canCancel = data.status === 'WAITING' || data.status === 'CALLED';
 
   return (
-    <div style={{ minHeight: '100vh', background: isCalled ? 'var(--tomato)' : 'var(--cream)', transition: 'background 0.5s' }}>
+    <div style={{ minHeight: '100vh', background: isCalled ? 'var(--tomato)' : 'var(--cream)', transition: 'background 0.5s', opacity: isCancelled ? 0.85 : 1 }}>
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '32px 20px 60px' }}>
 
         {/* 헤더 */}
@@ -153,6 +223,15 @@ export default function WaitingStatusPage() {
             <div style={{ fontSize: '4rem', marginBottom: 8 }}>🎉</div>
             <div style={{ fontSize: '1.4rem', fontWeight: 900, marginBottom: 8 }}>입장 완료!</div>
             <div style={{ fontSize: '0.95rem', color: 'var(--muted)', fontWeight: 700 }}>즐거운 식사 되세요</div>
+          </div>
+        )}
+
+        {/* 취소됨 상태 */}
+        {isCancelled && (
+          <div style={{ textAlign: 'center', marginBottom: 24 }}>
+            <div style={{ fontSize: '4rem', marginBottom: 8 }}>❌</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 900, marginBottom: 8 }}>웨이팅이 취소됐어요</div>
+            <div style={{ fontSize: '0.95rem', color: 'var(--muted)', fontWeight: 700 }}>다음에 또 이용해주세요</div>
           </div>
         )}
 
@@ -268,47 +347,31 @@ export default function WaitingStatusPage() {
           </div>
         </div>
 
-        {/* 자동 갱신 안내 */}
+        {/* 실시간 연결 상태 */}
         {!isEntered && (
           <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 16px', background: isCalled ? 'rgba(255,255,255,0.1)' : 'var(--cream)',
-            border: `2px solid ${isCalled ? 'rgba(255,255,255,0.2)' : 'var(--line)'}`,
-            borderRadius: 12, marginBottom: 20
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6,
+            padding: '8px 16px', marginBottom: 20
           }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: isCalled ? 'rgba(255,255,255,0.7)' : 'var(--muted)' }}>
-              마지막 업데이트: {lastUpdated}
+            <div style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: sseConnected
+                ? (isCalled ? '#fff' : 'var(--mint)')
+                : (isCalled ? 'rgba(255,255,255,0.4)' : 'var(--muted)'),
+              animation: sseConnected ? 'blink 1s infinite' : 'none'
+            }} />
+            <span style={{
+              fontSize: '0.78rem', fontWeight: 800,
+              color: isCalled ? 'rgba(255,255,255,0.7)' : 'var(--muted)'
+            }}>
+              {sseConnected ? '실시간 연결됨' : '연결 중...'}
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{
-                width: 8, height: 8, borderRadius: '50%',
-                background: isCalled ? '#fff' : 'var(--mint)',
-                animation: 'blink 1s infinite'
-              }} />
-              <span style={{
-                fontSize: '0.78rem', fontWeight: 800,
-                color: isCalled ? 'rgba(255,255,255,0.7)' : 'var(--mint)'
-              }}>
-                {countdown}초 후 갱신
-              </span>
-            </div>
           </div>
         )}
 
         {/* 버튼 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <button onClick={fetchStatus}
-            style={{
-              width: '100%', padding: 14,
-              background: isCalled ? 'rgba(255,255,255,0.2)' : '#fff',
-              color: isCalled ? '#fff' : 'var(--ink)',
-              border: `2.5px solid ${isCalled ? 'rgba(255,255,255,0.5)' : 'var(--ink)'}`,
-              borderRadius: 14, fontSize: '0.95rem', fontWeight: 800, cursor: 'pointer',
-              fontFamily: 'inherit', boxShadow: isCalled ? 'none' : '3px 3px 0 var(--ink)'
-            }}>
-            🔄 지금 새로고침
-          </button>
-          {data.status === 'WAITING' && (
+          {canCancel && (
             <button onClick={cancelWaiting}
               style={{
                 width: '100%', padding: 14, background: 'transparent',
@@ -320,7 +383,7 @@ export default function WaitingStatusPage() {
               웨이팅 취소
             </button>
           )}
-          {isEntered && (
+          {(isEntered || isCancelled) && (
             <button onClick={() => navigate('/')}
               style={{
                 width: '100%', padding: 14, background: 'var(--tomato)', color: '#fff',

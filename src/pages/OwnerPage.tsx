@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
+import { API_BASE } from '../lib/api';
 
 type SessionStatus = 'OPEN' | 'PAUSED' | 'CLOSED';
 type WaitingStatus = 'WAITING' | 'CALLED' | 'ENTERED' | 'CANCELLED';
@@ -15,7 +16,7 @@ type WaitingSession = {
 };
 
 type OwnerWaiting = {
-  waitingId: number;
+  waitingToken: string;
   waitingNumber: number;
   partySize: number;
   status: WaitingStatus;
@@ -30,28 +31,10 @@ type OwnerReservation = {
   status: ReservationStatus;
 };
 
-const DUMMY_SESSION: WaitingSession = {
-  sessionId: 1,
-  status: 'OPEN',
-  currentCount: 7,
-  maxWaitingCount: 30,
-  openedAt: '2026-06-08 11:00',
+type Restaurant = {
+  id: number;
+  name: string;
 };
-
-const DUMMY_WAITINGS: OwnerWaiting[] = [
-  { waitingId: 1, waitingNumber: 1, partySize: 2, status: 'WAITING', registeredAt: '11:05' },
-  { waitingId: 2, waitingNumber: 2, partySize: 4, status: 'CALLED', registeredAt: '11:10' },
-  { waitingId: 3, waitingNumber: 3, partySize: 2, status: 'WAITING', registeredAt: '11:15' },
-  { waitingId: 4, waitingNumber: 4, partySize: 3, status: 'ENTERED', registeredAt: '11:20' },
-  { waitingId: 5, waitingNumber: 5, partySize: 2, status: 'WAITING', registeredAt: '11:25' },
-];
-
-const DUMMY_RESERVATIONS: OwnerReservation[] = [
-  { reservationId: 1, userName: '김철수', slotTime: '12:00', headcount: 2, status: 'CONFIRMED' },
-  { reservationId: 2, userName: '이영희', slotTime: '12:30', headcount: 4, status: 'CONFIRMED' },
-  { reservationId: 3, userName: '박민준', slotTime: '13:00', headcount: 2, status: 'VISITED' },
-  { reservationId: 4, userName: '최지우', slotTime: '13:30', headcount: 3, status: 'NO_SHOW' },
-];
 
 const STATUS_LABEL: Record<SessionStatus | WaitingStatus | ReservationStatus, string> = {
   OPEN: '운영중',
@@ -76,70 +59,221 @@ const STATUS_CLASS: Record<WaitingStatus | ReservationStatus, string> = {
   NO_SHOW: 'tag-noshow',
 };
 
+function formatDateTime(raw: string | null | undefined): string {
+  if (!raw) return '';
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return raw;
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = localStorage.getItem('nowait_token');
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...(options.headers ?? {}),
+    },
+  });
+  if (res.status === 401) {
+    localStorage.removeItem('nowait_token');
+    localStorage.removeItem('nowait_user');
+    window.location.href = '/auth';
+    throw new Error('로그인이 만료됐어요.');
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { message?: string };
+    throw new Error(body.message ?? '요청 처리 중 오류가 발생했습니다.');
+  }
+  const text = await res.text();
+  return (text ? JSON.parse(text) : null) as T;
+}
+
+const POLL_MS = 30_000;
+
 export default function OwnerPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<'waiting' | 'reservation'>('waiting');
-  const [session, setSession] = useState<WaitingSession>(DUMMY_SESSION);
-  const [waitings, setWaitings] = useState<OwnerWaiting[]>(DUMMY_WAITINGS);
-  const [reservations, setReservations] = useState<OwnerReservation[]>(DUMMY_RESERVATIONS);
+
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const [restaurantLoading, setRestaurantLoading] = useState(true);
+
+  const [session, setSession] = useState<WaitingSession | null>(null);
+  const [waitings, setWaitings] = useState<OwnerWaiting[]>([]);
+  const [dataLoading, setDataLoading] = useState(false);
+
+  // 예약은 백엔드 미구현으로 빈 목록
+  const reservations: OwnerReservation[] = [];
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── 데이터 로드 ─────────────────────────────────────────────
+
+  const fetchLiveData = useCallback(async (restaurantId: number) => {
+    const [sessionRes, waitingsRes] = await Promise.allSettled([
+      apiFetch<WaitingSession>(`/restaurants/${restaurantId}/waiting-session`),
+      apiFetch<OwnerWaiting[]>(`/owners/restaurants/${restaurantId}/waitings`),
+    ]);
+
+    if (sessionRes.status === 'fulfilled') setSession(sessionRes.value);
+    else setSession(null);
+
+    if (waitingsRes.status === 'fulfilled') {
+      setWaitings(waitingsRes.value.map(w => ({
+        ...w,
+        registeredAt: formatDateTime(w.registeredAt),
+      })));
+    }
+  }, []);
 
   useEffect(() => {
-    if (!localStorage.getItem('nowait_token')) navigate('/auth');
-  }, [navigate]);
+    const token = localStorage.getItem('nowait_token');
+    if (!token) { navigate('/auth'); return; }
+
+    async function init() {
+      setRestaurantLoading(true);
+      try {
+        const data = await apiFetch<Restaurant>('/restaurants/mine');
+        setRestaurant(data);
+        setDataLoading(true);
+        await fetchLiveData(data.id);
+        setDataLoading(false);
+        pollRef.current = setInterval(() => void fetchLiveData(data.id), POLL_MS);
+      } catch {
+        setRestaurant(null);
+      } finally {
+        setRestaurantLoading(false);
+      }
+    }
+
+    void init();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [navigate, fetchLiveData]);
+
+  // ── 액션 핸들러 ─────────────────────────────────────────────
+
+  async function callWaiting(token: string) {
+    try {
+      await apiFetch(`/owners/waitings/${token}/call`, { method: 'PATCH' });
+      setWaitings(prev => prev.map(w => w.waitingToken === token ? { ...w, status: 'CALLED' } : w));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '호출에 실패했습니다.');
+    }
+  }
+
+  async function enterWaiting(token: string) {
+    try {
+      await apiFetch(`/owners/waitings/${token}/enter`, { method: 'PATCH' });
+      setWaitings(prev => prev.map(w => w.waitingToken === token ? { ...w, status: 'ENTERED' } : w));
+      setSession(s => s ? { ...s, currentCount: Math.max(0, s.currentCount - 1) } : s);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '입장 처리에 실패했습니다.');
+    }
+  }
+
+  async function changeSessionStatus(action: 'pause' | 'resume' | 'close') {
+    if (!session) return;
+    const label = { pause: '일시정지', resume: '재개', close: '마감' }[action];
+    if (!confirm(`웨이팅을 ${label}하시겠어요?`)) return;
+    try {
+      const updated = await apiFetch<WaitingSession>(
+        `/owners/waiting-sessions/${session.sessionId}/${action}`,
+        { method: 'PATCH' },
+      );
+      setSession(updated);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '처리에 실패했습니다.');
+    }
+  }
+
+  // ── 파생 상태 ────────────────────────────────────────────────
 
   const activeWaitings = useMemo(
-    () => waitings.filter(waiting => waiting.status !== 'CANCELLED'),
+    () => waitings.filter(w => w.status !== 'CANCELLED' && w.status !== 'ENTERED'),
     [waitings],
   );
-  const progress = Math.min(100, Math.round((session.currentCount / session.maxWaitingCount) * 100));
+  const progress = session
+    ? Math.min(100, Math.round((session.currentCount / session.maxWaitingCount) * 100))
+    : 0;
 
-  function changeSessionStatus(action: 'pause' | 'resume' | 'close') {
-    const actionLabel = { pause: '일시정지', resume: '재개', close: '마감' }[action];
-    if (!confirm(`웨이팅을 ${actionLabel}하시겠어요?`)) return;
+  // ── 로딩 ────────────────────────────────────────────────────
 
-    const statusMap: Record<typeof action, SessionStatus> = {
-      pause: 'PAUSED',
-      resume: 'OPEN',
-      close: 'CLOSED',
-    };
-
-    setSession(current => ({ ...current, status: statusMap[action] }));
-  }
-
-  function callWaiting(waitingId: number) {
-    setWaitings(current =>
-      current.map(waiting => (waiting.waitingId === waitingId ? { ...waiting, status: 'CALLED' } : waiting)),
+  if (restaurantLoading) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--cream)' }}>
+        <Header />
+        <div className="spinner" />
+      </div>
     );
   }
 
-  function enterWaiting(waitingId: number) {
-    setWaitings(current =>
-      current.map(waiting => (waiting.waitingId === waitingId ? { ...waiting, status: 'ENTERED' } : waiting)),
+  // ── 식당 미등록 ──────────────────────────────────────────────
+
+  if (!restaurant) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--cream)' }}>
+        <Header />
+        <main className="container" style={{ padding: '60px 26px', textAlign: 'center' }}>
+          <div style={{
+            maxWidth: 480, margin: '0 auto', background: '#fff',
+            border: '2.5px solid var(--ink)', borderRadius: 20,
+            boxShadow: '6px 6px 0 var(--ink)', padding: '40px 32px',
+          }}>
+            <div style={{ fontSize: '3rem', marginBottom: 16 }}>🏪</div>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 900, marginBottom: 10 }}>
+              아직 등록된 매장이 없어요
+            </h2>
+            <p style={{ color: 'var(--muted)', fontWeight: 700, marginBottom: 28, lineHeight: 1.7 }}>
+              대시보드를 사용하려면 먼저 매장 정보를 등록해주세요.
+            </p>
+            <button
+              type="button"
+              className="btn btn-tomato"
+              onClick={() => navigate('/owner/store')}
+            >
+              매장 등록하기
+            </button>
+          </div>
+        </main>
+      </div>
     );
-    setSession(current => ({ ...current, currentCount: Math.max(0, current.currentCount - 1) }));
   }
 
-  function markVisited(reservationId: number) {
-    setReservations(current =>
-      current.map(reservation =>
-        reservation.reservationId === reservationId ? { ...reservation, status: 'VISITED' } : reservation,
-      ),
-    );
-  }
-
-  function markNoShow(reservationId: number) {
-    setReservations(current =>
-      current.map(reservation =>
-        reservation.reservationId === reservationId ? { ...reservation, status: 'NO_SHOW' } : reservation,
-      ),
-    );
-  }
+  // ── 메인 렌더 ────────────────────────────────────────────────
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--cream)' }}>
       <Header />
 
       <main className="container" style={{ padding: '34px 26px 76px' }}>
+        {/* 매장 정보 배너 */}
+        <section
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '18px',
+            flexWrap: 'wrap',
+            background: '#fff',
+            border: '2.5px solid var(--ink)',
+            borderRadius: '8px',
+            padding: '18px 20px',
+            marginBottom: '22px',
+          }}
+        >
+          <div>
+            <strong style={{ display: 'block', fontSize: '18px', fontWeight: 900 }}>{restaurant.name}</strong>
+            <span style={{ color: 'var(--muted)', fontSize: '14px', fontWeight: 700 }}>
+              기본 정보와 예약·웨이팅 운영 여부를 관리합니다.
+            </span>
+          </div>
+          <button type="button" className="btn btn-amber btn-sm" onClick={() => navigate('/owner/store')}>
+            매장 관리
+          </button>
+        </section>
+
+        {/* 히어로 + 세션 카드 */}
         <section
           style={{
             display: 'grid',
@@ -149,6 +283,7 @@ export default function OwnerPage() {
             marginBottom: '24px',
           }}
         >
+          {/* 히어로 */}
           <div
             className="card-base"
             style={{
@@ -162,24 +297,10 @@ export default function OwnerPage() {
             }}
           >
             <div>
-              <span
-                className="badge badge-amber"
-                style={{
-                  color: 'var(--ink)',
-                  boxShadow: '3px 3px 0 var(--ink)',
-                }}
-              >
+              <span className="badge badge-amber" style={{ color: 'var(--ink)', boxShadow: '3px 3px 0 var(--ink)' }}>
                 OWNER DASHBOARD
               </span>
-              <h1
-                style={{
-                  fontSize: 'clamp(30px, 4.6vw, 50px)',
-                  fontWeight: 900,
-                  letterSpacing: '-0.05em',
-                  lineHeight: 1.06,
-                  marginTop: '14px',
-                }}
-              >
+              <h1 style={{ fontSize: 'clamp(30px, 4.6vw, 50px)', fontWeight: 900, letterSpacing: '-0.05em', lineHeight: 1.06, marginTop: '14px' }}>
                 오늘의 예약과
                 <br />
                 웨이팅을 관리하세요.
@@ -190,94 +311,66 @@ export default function OwnerPage() {
             </p>
           </div>
 
+          {/* 웨이팅 세션 카드 */}
           <div className="card-base" style={{ background: '#fff', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-              <div>
-                <span className="kicker">WAITING SESSION</span>
-                <h2 style={{ fontSize: '24px', fontWeight: 900, letterSpacing: '-0.04em' }}>
-                  웨이팅 세션
-                </h2>
-              </div>
-              <span
-                className={`tag ${
-                  session.status === 'OPEN'
-                    ? 'tag-open'
-                    : session.status === 'PAUSED'
-                      ? 'tag-called'
-                      : 'tag-cancelled'
-                }`}
-              >
-                {STATUS_LABEL[session.status]}
-              </span>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'end',
-                justifyContent: 'space-between',
-                marginTop: '22px',
-                gap: '10px',
-              }}
-            >
-              <div>
-                <div style={{ color: 'var(--muted)', fontSize: '13px', fontWeight: 900 }}>현재 대기</div>
-                <div style={{ color: 'var(--tomato)', fontSize: '58px', fontWeight: 900, lineHeight: 1 }}>
-                  {session.currentCount}
+            {session ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                  <div>
+                    <span className="kicker">WAITING SESSION</span>
+                    <h2 style={{ fontSize: '24px', fontWeight: 900, letterSpacing: '-0.04em' }}>웨이팅 세션</h2>
+                  </div>
+                  <span className={`tag ${session.status === 'OPEN' ? 'tag-open' : session.status === 'PAUSED' ? 'tag-called' : 'tag-cancelled'}`}>
+                    {STATUS_LABEL[session.status]}
+                  </span>
                 </div>
-              </div>
-              <div style={{ color: 'var(--muted)', fontSize: '14px', fontWeight: 800, textAlign: 'right' }}>
-                최대 {session.maxWaitingCount}팀
-                <br />
-                시작 {session.openedAt}
-              </div>
-            </div>
 
-            <div
-              style={{
-                height: '14px',
-                background: 'var(--cream)',
-                border: '2.5px solid var(--ink)',
-                borderRadius: '999px',
-                overflow: 'hidden',
-                marginTop: '16px',
-              }}
-            >
-              <div
-                style={{
-                  width: `${progress}%`,
-                  height: '100%',
-                  background: 'var(--amber)',
-                  transition: 'width .2s ease',
-                }}
-              />
-            </div>
+                <div style={{ display: 'flex', alignItems: 'end', justifyContent: 'space-between', marginTop: '22px', gap: '10px' }}>
+                  <div>
+                    <div style={{ color: 'var(--muted)', fontSize: '13px', fontWeight: 900 }}>현재 대기</div>
+                    <div style={{ color: 'var(--tomato)', fontSize: '58px', fontWeight: 900, lineHeight: 1 }}>
+                      {dataLoading ? '—' : session.currentCount}
+                    </div>
+                  </div>
+                  <div style={{ color: 'var(--muted)', fontSize: '14px', fontWeight: 800, textAlign: 'right' }}>
+                    최대 {session.maxWaitingCount}팀
+                    <br />
+                    시작 {formatDateTime(session.openedAt)}
+                  </div>
+                </div>
 
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '20px' }}>
-              {session.status === 'OPEN' && (
-                <button type="button" className="btn btn-white btn-sm" onClick={() => changeSessionStatus('pause')}>
-                  일시정지
+                <div style={{ height: '14px', background: 'var(--cream)', border: '2.5px solid var(--ink)', borderRadius: '999px', overflow: 'hidden', marginTop: '16px' }}>
+                  <div style={{ width: `${progress}%`, height: '100%', background: 'var(--amber)', transition: 'width .2s ease' }} />
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '20px' }}>
+                  {session.status === 'OPEN' && (
+                    <button type="button" className="btn btn-white btn-sm" onClick={() => void changeSessionStatus('pause')}>일시정지</button>
+                  )}
+                  {session.status === 'PAUSED' && (
+                    <button type="button" className="btn btn-amber btn-sm" onClick={() => void changeSessionStatus('resume')}>재개</button>
+                  )}
+                  {session.status !== 'CLOSED' && (
+                    <button type="button" className="btn btn-white btn-sm" style={{ color: 'var(--tomato)' }}
+                      onClick={() => void changeSessionStatus('close')}>마감</button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 14 }}>
+                <span className="kicker">WAITING SESSION</span>
+                <p style={{ fontWeight: 800, color: 'var(--muted)', textAlign: 'center' }}>
+                  오늘 오픈된 웨이팅 세션이 없어요.
+                </p>
+                <button type="button" className="btn btn-amber btn-sm" onClick={() => navigate('/owner/store')}>
+                  세션 오픈하기
                 </button>
-              )}
-              {session.status === 'PAUSED' && (
-                <button type="button" className="btn btn-amber btn-sm" onClick={() => changeSessionStatus('resume')}>
-                  재개
-                </button>
-              )}
-              {session.status !== 'CLOSED' && (
-                <button
-                  type="button"
-                  className="btn btn-white btn-sm"
-                  onClick={() => changeSessionStatus('close')}
-                  style={{ color: 'var(--tomato)' }}
-                >
-                  마감
-                </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </section>
 
+        {/* 탭 */}
         <div
           style={{
             display: 'grid',
@@ -298,14 +391,17 @@ export default function OwnerPage() {
               onClick={() => setTab(item)}
               className={`btn ${tab === item ? 'btn-tomato' : 'btn-white'} btn-sm`}
             >
-              {item === 'waiting' ? '웨이팅 관리' : '예약 관리'}
+              {item === 'waiting' ? `웨이팅 관리 (${activeWaitings.length})` : '예약 관리'}
             </button>
           ))}
         </div>
 
+        {/* 웨이팅 탭 */}
         {tab === 'waiting' && (
           <section>
-            {activeWaitings.length === 0 ? (
+            {dataLoading ? (
+              <div className="spinner" />
+            ) : activeWaitings.length === 0 ? (
               <div className="empty-state card-base" style={{ background: '#fff' }}>
                 <p>대기 중인 손님이 없습니다.</p>
               </div>
@@ -313,35 +409,17 @@ export default function OwnerPage() {
               <div style={{ display: 'grid', gap: '14px' }}>
                 {activeWaitings.map(waiting => (
                   <article
-                    key={waiting.waitingId}
+                    key={waiting.waitingToken}
                     className="card-base"
-                    style={{
-                      background: '#fff',
-                      padding: '20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '16px',
-                      flexWrap: 'wrap',
-                    }}
+                    style={{ background: '#fff', padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
-                      <div
-                        style={{
-                          width: '56px',
-                          height: '56px',
-                          borderRadius: '18px',
-                          background: 'var(--amber)',
-                          border: '2.5px solid var(--ink)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '22px',
-                          fontWeight: 900,
-                          boxShadow: '3px 3px 0 var(--ink)',
-                          flexShrink: 0,
-                        }}
-                      >
+                      <div style={{
+                        width: '56px', height: '56px', borderRadius: '18px',
+                        background: 'var(--amber)', border: '2.5px solid var(--ink)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '22px', fontWeight: 900, boxShadow: '3px 3px 0 var(--ink)', flexShrink: 0,
+                      }}>
                         {waiting.waitingNumber}
                       </div>
                       <div>
@@ -361,16 +439,23 @@ export default function OwnerPage() {
 
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       {waiting.status === 'WAITING' && (
-                        <button type="button" className="btn btn-tomato btn-sm" onClick={() => callWaiting(waiting.waitingId)}>
+                        <button type="button" className="btn btn-tomato btn-sm"
+                          onClick={() => void callWaiting(waiting.waitingToken)}>
                           호출
                         </button>
                       )}
                       {waiting.status === 'CALLED' && (
-                        <button type="button" className="btn btn-amber btn-sm" onClick={() => enterWaiting(waiting.waitingId)}>
-                          입장
-                        </button>
+                        <>
+                          <button type="button" className="btn btn-amber btn-sm"
+                            onClick={() => void enterWaiting(waiting.waitingToken)}>
+                            입장
+                          </button>
+                          <button type="button" className="btn btn-tomato btn-sm"
+                            onClick={() => void callWaiting(waiting.waitingToken)}>
+                            재호출
+                          </button>
+                        </>
                       )}
-                      {waiting.status === 'ENTERED' && <span className="tag tag-entered">처리 완료</span>}
                     </div>
                   </article>
                 ))}
@@ -379,6 +464,7 @@ export default function OwnerPage() {
           </section>
         )}
 
+        {/* 예약 탭 */}
         {tab === 'reservation' && (
           <section>
             {reservations.length === 0 ? (
@@ -391,49 +477,17 @@ export default function OwnerPage() {
                   <article
                     key={reservation.reservationId}
                     className="card-base"
-                    style={{
-                      background: '#fff',
-                      padding: '20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '16px',
-                      flexWrap: 'wrap',
-                    }}
+                    style={{ background: '#fff', padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}
                   >
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <h3 style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '-0.04em' }}>
-                          {reservation.userName}
-                        </h3>
-                        <span className={`tag ${STATUS_CLASS[reservation.status]}`}>
-                          {STATUS_LABEL[reservation.status]}
-                        </span>
+                        <h3 style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '-0.04em' }}>{reservation.userName}</h3>
+                        <span className={`tag ${STATUS_CLASS[reservation.status]}`}>{STATUS_LABEL[reservation.status]}</span>
                       </div>
                       <p style={{ color: 'var(--muted)', fontSize: '14px', fontWeight: 700, marginTop: '6px' }}>
                         {reservation.slotTime} · {reservation.headcount}명
                       </p>
                     </div>
-
-                    {reservation.status === 'CONFIRMED' && (
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          className="btn btn-amber btn-sm"
-                          onClick={() => markVisited(reservation.reservationId)}
-                        >
-                          방문 완료
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-white btn-sm"
-                          onClick={() => markNoShow(reservation.reservationId)}
-                          style={{ color: 'var(--tomato)' }}
-                        >
-                          노쇼
-                        </button>
-                      </div>
-                    )}
                   </article>
                 ))}
               </div>

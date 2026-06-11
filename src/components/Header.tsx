@@ -29,6 +29,7 @@ export default function Header() {
   };
 
   const isCurrent = (path: string) => location.pathname === path;
+  const isOwnerPage = location.pathname.startsWith('/owner');
 
   return (
     <header
@@ -95,6 +96,10 @@ export default function Header() {
                   className="btn btn-amber btn-sm"
                   type="button"
                   onClick={() => navigate('/owner')}
+                  style={{
+                    background: isOwnerPage ? 'var(--tomato)' : 'var(--amber)',
+                    color: isOwnerPage ? '#fff' : 'var(--ink)',
+                  }}
                 >
                   사장님
                 </button>

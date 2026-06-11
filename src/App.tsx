@@ -7,6 +7,7 @@ import OwnerPage from './pages/OwnerPage';
 import './index.css';
 import LandingPage from './pages/LandingPage';
 import WaitingStatusPage from './pages/WaitingStatusPage';
+import StoreManagementPage from './pages/StoreManagementPage';
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
 
         {/* 점주 대시보드 */}
         <Route path="/owner" element={<OwnerPage />} />
+        <Route path="/owner/store" element={<StoreManagementPage />} />
       </Routes>
     </BrowserRouter>
   );

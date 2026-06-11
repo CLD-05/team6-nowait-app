@@ -191,7 +191,7 @@ export default function LandingPage() {
             <a onClick={() => go('showcase')}>맛집</a>
             <a onClick={() => go('owner')}>사장님</a>
           </nav>
-          <button className="btn btn-tomato btn-sm" onClick={() => navigate('/auth')}>지금 시작하기</button>
+          <button className="btn btn-tomato btn-sm" onClick={() => navigate('/')}>지금 시작해보기</button>
         </div>
       </header>
 

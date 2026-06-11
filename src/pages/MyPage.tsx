@@ -1,29 +1,78 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE, IMAGE_BASE } from '../lib/api';
 
 const USE_DUMMY = false;
-const API_BASE = '/api/v1';
 
-const DUMMY_RESERVATIONS = [
-  { reservationId: 1, restaurantName: '미진 1호점', slotDate: '2026-06-10', slotTime: '12:00', headcount: 2, status: 'CONFIRMED' },
-  { reservationId: 2, restaurantName: '스시콜 2호점', slotDate: '2026-06-08', slotTime: '19:00', headcount: 4, status: 'VISITED' },
-  { reservationId: 3, restaurantName: '왕가원 3호점', slotDate: '2026-06-05', slotTime: '13:00', headcount: 2, status: 'CANCELLED' },
-  { reservationId: 4, restaurantName: '비스트로 르', slotDate: '2026-06-03', slotTime: '18:30', headcount: 3, status: 'NO_SHOW' },
+type Reservation = {
+  reservationToken: string;
+  reservationId: number | null;
+  restaurantId: number;
+  restaurantName: string;
+  slotDate: string;
+  slotTime: string;
+  headcount: number;
+  status: string;
+};
+
+type Waiting = {
+  waitingToken: string;
+  restaurantId: number;
+  restaurantName?: string;
+  waitingNumber: number;
+  partySize: number;
+  status: string;
+  aheadCount?: number;
+  registeredAt?: string;
+};
+
+type Favorite = {
+  favoriteId: number;
+  restaurantId: number;
+  restaurantName: string;
+  category: string;
+  mainMenuName?: string;
+  imageUrl?: string;
+};
+
+type Notification = {
+  notificationId: number;
+  type: string;
+  message: string;
+  isRead: string;
+  createdAt: string;
+};
+
+type StoredUser = {
+  name?: string;
+  email?: string;
+};
+
+function resolveImageUrl(imageUrl?: string) {
+  if (!imageUrl) return '/favicon.svg';
+  return /^https?:\/\//.test(imageUrl) ? imageUrl : `${IMAGE_BASE}${imageUrl}`;
+}
+
+const DUMMY_RESERVATIONS: Reservation[] = [
+  { reservationToken: 'reservation-1', reservationId: 1, restaurantId: 1, restaurantName: '미진 1호점', slotDate: '2026-06-10', slotTime: '12:00', headcount: 2, status: 'CONFIRMED' },
+  { reservationToken: 'reservation-2', reservationId: 2, restaurantId: 2, restaurantName: '스시콜 2호점', slotDate: '2026-06-08', slotTime: '19:00', headcount: 4, status: 'VISITED' },
+  { reservationToken: 'reservation-3', reservationId: 3, restaurantId: 3, restaurantName: '왕가원 3호점', slotDate: '2026-06-05', slotTime: '13:00', headcount: 2, status: 'CANCELLED' },
+  { reservationToken: 'reservation-4', reservationId: 4, restaurantId: 4, restaurantName: '비스트로 르', slotDate: '2026-06-03', slotTime: '18:30', headcount: 3, status: 'NO_SHOW' },
 ];
 
-const DUMMY_WAITINGS = [
-  { waitingId: 1, restaurantName: '미진 1호점', waitingNumber: 5, partySize: 2, status: 'WAITING' },
-  { waitingId: 2, restaurantName: '스시콜 2호점', waitingNumber: 3, partySize: 4, status: 'CALLED' },
-  { waitingId: 3, restaurantName: '왕가원 3호점', waitingNumber: 7, partySize: 2, status: 'ENTERED' },
+const DUMMY_WAITINGS: Waiting[] = [
+  { waitingToken: 'waiting-1', restaurantId: 1, restaurantName: '미진 1호점', waitingNumber: 5, partySize: 2, status: 'WAITING' },
+  { waitingToken: 'waiting-2', restaurantId: 2, restaurantName: '스시콜 2호점', waitingNumber: 3, partySize: 4, status: 'CALLED' },
+  { waitingToken: 'waiting-3', restaurantId: 3, restaurantName: '왕가원 3호점', waitingNumber: 7, partySize: 2, status: 'ENTERED' },
 ];
 
-const DUMMY_FAVORITES = [
+const DUMMY_FAVORITES: Favorite[] = [
   { favoriteId: 1, restaurantId: 1, restaurantName: '미진 1호점', category: 'KOREAN', mainMenuName: '제육볶음', imageUrl: 'https://images.unsplash.com/photo-1583224944844-5b268c057b72?w=400&q=80' },
   { favoriteId: 2, restaurantId: 2, restaurantName: '스시콜 2호점', category: 'JAPANESE', mainMenuName: '특선 스시', imageUrl: 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=400&q=80' },
   { favoriteId: 3, restaurantId: 3, restaurantName: '왕가원 3호점', category: 'CHINESE', mainMenuName: '마파두부', imageUrl: 'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=400&q=80' },
 ];
 
-const DUMMY_NOTIFICATIONS = [
+const DUMMY_NOTIFICATIONS: Notification[] = [
   { notificationId: 1, type: 'WAITING_CALLED', message: '미진 1호점 웨이팅 차례가 됐어요! 10분 안에 입장해주세요.', isRead: 'N', createdAt: '2026-06-10 12:30' },
   { notificationId: 2, type: 'RESERVATION_CONFIRMED', message: '스시콜 2호점 예약이 확정됐어요. 6월 8일 19:00 4명', isRead: 'N', createdAt: '2026-06-08 10:00' },
   { notificationId: 3, type: 'REVIEW_REQUEST', message: '왕가원 3호점 방문 어떠셨나요? 리뷰를 남겨주세요!', isRead: 'Y', createdAt: '2026-06-05 20:00' },
@@ -54,23 +103,17 @@ type Tab = 'reservation' | 'waiting' | 'favorite' | 'notification';
 export default function MyPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('reservation');
-  const [reservations, setReservations] = useState<any[]>([]);
-  const [waitings, setWaitings] = useState<any[]>([]);
-  const [favorites, setFavorites] = useState<any[]>([]);
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [waitings, setWaitings] = useState<Waiting[]>([]);
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  const user = JSON.parse(localStorage.getItem('nowait_user') || '{}');
+  const user = JSON.parse(localStorage.getItem('nowait_user') || '{}') as StoredUser;
   const unreadCount = notifications.filter(n => n.isRead === 'N').length;
 
-  useEffect(() => {
-    const token = localStorage.getItem('nowait_token');
-    if (!token) { navigate('/auth'); return; }
-    fetchData();
-  }, []);
-
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       if (USE_DUMMY) {
@@ -81,56 +124,99 @@ export default function MyPage() {
         setNotifications(DUMMY_NOTIFICATIONS);
       } else {
         const token = localStorage.getItem('nowait_token');
+        if (!token) {
+          navigate('/auth');
+          return;
+        }
         const h = { Authorization: `Bearer ${token}` };
         const [r1, r2, r3, r4] = await Promise.all([
           fetch(`${API_BASE}/reservations/me`, { headers: h }),
-          fetch(`${API_BASE}/waitings/me`, { headers: h }),
+          fetch(`${API_BASE}/waitings/me/history`, { headers: h }),
           fetch(`${API_BASE}/users/me/favorites`, { headers: h }),
           fetch(`${API_BASE}/notifications/me`, { headers: h })
         ]);
-        setReservations(await r1.json());
-        setWaitings(await r2.json());
-        setFavorites(await r3.json());
-        setNotifications(await r4.json());
-      }
-    } finally { setLoading(false); }
-  }
+        if (!r1.ok || !r3.ok || !r4.ok) throw new Error('마이페이지 정보를 불러오지 못했습니다.');
 
-  async function cancelReservation(id: number) {
+        setReservations(await r1.json() as Reservation[]);
+        setFavorites(await r3.json() as Favorite[]);
+        setNotifications(await r4.json() as Notification[]);
+
+        if (r2.ok) {
+          const waitingList = await r2.json() as Waiting[];
+          const waitingsWithNames = await Promise.all(
+            waitingList.map(async (waiting) => {
+              try {
+                const restaurantResponse = await fetch(`${API_BASE}/restaurants/${waiting.restaurantId}`);
+                const restaurant = restaurantResponse.ok
+                  ? await restaurantResponse.json() as { name?: string }
+                  : null;
+                return { ...waiting, restaurantName: restaurant?.name };
+              } catch {
+                return waiting;
+              }
+            })
+          );
+          setWaitings(waitingsWithNames);
+        } else {
+          setWaitings([]);
+        }
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [navigate]);
+
+  useEffect(() => {
+    // 비동기 요청 완료 후 상태를 갱신한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchData();
+  }, [fetchData]);
+
+  async function cancelReservation(reservationToken: string) {
     if (!confirm('예약을 취소하시겠어요?')) return;
     if (USE_DUMMY) {
-      setReservations(prev => prev.map(r => r.reservationId === id ? { ...r, status: 'CANCELLED' } : r));
+      setReservations(prev => prev.map(r => r.reservationToken === reservationToken ? { ...r, status: 'CANCELLED' } : r));
     } else {
       const token = localStorage.getItem('nowait_token');
-      await fetch(`${API_BASE}/reservations/${id}/cancel`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
-      fetchData();
+      const response = await fetch(`${API_BASE}/reservations/${reservationToken}/cancel`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error('예약 취소에 실패했습니다.');
+      await fetchData();
     }
   }
 
-  async function cancelWaiting(id: number) {
+  async function cancelWaiting(waitingToken: string) {
     if (!confirm('웨이팅을 취소하시겠어요?')) return;
     if (USE_DUMMY) {
-      setWaitings(prev => prev.map(w => w.waitingId === id ? { ...w, status: 'CANCELLED' } : w));
+      setWaitings(prev => prev.map(w => w.waitingToken === waitingToken ? { ...w, status: 'CANCELLED' } : w));
     } else {
       const token = localStorage.getItem('nowait_token');
-      await fetch(`${API_BASE}/waiting/${id}/cancel`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
-      fetchData();
+      const response = await fetch(`${API_BASE}/waitings/${waitingToken}/cancel`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error('웨이팅 취소에 실패했습니다.');
+      await fetchData();
     }
   }
 
-  async function removeFavorite(id: number) {
+  async function removeFavorite(restaurantId: number) {
     if (!confirm('즐겨찾기를 삭제하시겠어요?')) return;
     if (USE_DUMMY) {
-      setFavorites(prev => prev.filter(f => f.favoriteId !== id));
+      setFavorites(prev => prev.filter(f => f.restaurantId !== restaurantId));
     } else {
       const token = localStorage.getItem('nowait_token');
-      await fetch(`${API_BASE}/favorites/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-      fetchData();
+      const response = await fetch(`${API_BASE}/restaurants/${restaurantId}/favorite`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error('즐겨찾기 해제에 실패했습니다.');
+      await fetchData();
     }
   }
 
   async function markAllRead() {
     if (USE_DUMMY) {
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: 'Y' })));
+    } else {
+      const token = localStorage.getItem('nowait_token');
+      const response = await fetch(`${API_BASE}/notifications/read-all`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error('알림 읽음 처리에 실패했습니다.');
       setNotifications(prev => prev.map(n => ({ ...n, isRead: 'Y' })));
     }
   }
@@ -139,35 +225,35 @@ export default function MyPage() {
     ? reservations : reservations.filter(r => r.status === statusFilter);
 
   const s = {
-    page: { minHeight: '100vh', background: 'var(--cream)' } as any,
-    wrap: { maxWidth: 860, margin: '0 auto', padding: '32px 20px 60px' } as any,
+    page: { minHeight: '100vh', background: 'var(--cream)' } satisfies CSSProperties,
+    wrap: { maxWidth: 860, margin: '0 auto', padding: '32px 20px 60px' } satisfies CSSProperties,
     // 유저 프로필 카드
     profile: {
       background: '#fff', border: '2.5px solid var(--ink)', borderRadius: 20,
       boxShadow: '5px 5px 0 var(--ink)', padding: '24px', marginBottom: '24px',
       display: 'flex', alignItems: 'center', gap: 16
-    } as any,
+    } satisfies CSSProperties,
     avatar: {
       width: 56, height: 56, borderRadius: '50%', background: 'var(--tomato)',
       border: '2.5px solid var(--ink)', display: 'flex', alignItems: 'center',
       justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0
-    } as any,
+    } satisfies CSSProperties,
     // 탭
-    tabWrap: { display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' as const } as any,
-    tab: (active: boolean) => ({
+    tabWrap: { display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' } satisfies CSSProperties,
+    tab: (active: boolean): CSSProperties => ({
       padding: '10px 18px', borderRadius: 999, border: '2.5px solid var(--ink)',
       fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit',
       background: active ? 'var(--ink)' : '#fff',
       color: active ? '#fff' : 'var(--muted)',
       boxShadow: active ? '3px 3px 0 var(--tomato)' : '3px 3px 0 var(--ink)',
       transition: 'all 0.15s',
-    }) as any,
+    }),
     // 카드
     card: {
       background: '#fff', border: '2.5px solid var(--ink)', borderRadius: 16,
       boxShadow: '4px 4px 0 var(--ink)', padding: '18px 20px', marginBottom: 12,
       display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12
-    } as any,
+    } satisfies CSSProperties,
     // 상태 태그
     statusTag: (status: string) => {
       const map: Record<string, { bg: string; color: string }> = {
@@ -191,7 +277,7 @@ export default function MyPage() {
       padding: '8px 14px', border: '2px solid var(--ink)', borderRadius: 999,
       background: '#fff', color: 'var(--tomato)', fontSize: '0.82rem', fontWeight: 800,
       cursor: 'pointer', boxShadow: '2px 2px 0 var(--ink)', whiteSpace: 'nowrap' as const
-    } as any,
+    } satisfies CSSProperties,
   };
 
   return (
@@ -244,7 +330,7 @@ export default function MyPage() {
             {filteredReservations.length === 0 ? (
               <div className="empty-state"><div className="icon">📋</div><p>예약 내역이 없어요</p></div>
             ) : filteredReservations.map(r => (
-              <div key={r.reservationId} style={s.card}>
+              <div key={r.reservationToken} style={s.card}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                     <span style={{ fontWeight: 900, fontSize: '1rem' }}>{r.restaurantName}</span>
@@ -259,13 +345,13 @@ export default function MyPage() {
                       border: '2px solid var(--amber)', background: 'var(--amber)', color: 'var(--ink)',
                       fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer'
                     }}
-                      onClick={() => navigate(`/restaurant/${r.reservationId}?tab=review`)}>
+                      onClick={() => navigate(`/restaurant/${r.restaurantId}?tab=review&reservationId=${r.reservationId}`)}>
                       ⭐ 리뷰 작성
                     </button>
                   )}
                 </div>
                 {r.status === 'CONFIRMED' && (
-                  <button style={s.cancelBtn} onClick={() => cancelReservation(r.reservationId)}>취소</button>
+                  <button style={s.cancelBtn} onClick={() => void cancelReservation(r.reservationToken)}>취소</button>
                 )}
               </div>
             ))}
@@ -278,7 +364,7 @@ export default function MyPage() {
             {waitings.length === 0 ? (
               <div className="empty-state"><div className="icon">⏳</div><p>웨이팅 내역이 없어요</p></div>
             ) : waitings.map(w => (
-              <div key={w.waitingId} style={s.card}>
+              <div key={w.waitingToken} style={s.card}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                     <span style={{ fontWeight: 900, fontSize: '1rem' }}>{w.restaurantName}</span>
@@ -302,13 +388,13 @@ export default function MyPage() {
                       border: '2px solid var(--ink)', background: 'var(--amber)', color: 'var(--ink)',
                       fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer'
                     }}
-                      onClick={() => navigate(`/waiting/${w.waitingId}`)}>
+                      onClick={() => navigate(`/waiting/${w.waitingToken}`)}>
                       📊 순번 확인
                     </button>
                   )}
                 </div>
                 {w.status === 'WAITING' && (
-                  <button style={s.cancelBtn} onClick={() => cancelWaiting(w.waitingId)}>취소</button>
+                  <button style={s.cancelBtn} onClick={() => void cancelWaiting(w.waitingToken)}>취소</button>
                 )}
               </div>
             ))}
@@ -332,7 +418,7 @@ export default function MyPage() {
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translate(0,0)'; (e.currentTarget as HTMLElement).style.boxShadow = '4px 4px 0 var(--ink)'; }}>
                     <div style={{ position: 'relative', aspectRatio: '4/3', overflow: 'hidden' }}
                       onClick={() => navigate(`/restaurant/${f.restaurantId}`)}>
-                      <img src={f.imageUrl} alt={f.restaurantName}
+                      <img src={resolveImageUrl(f.imageUrl)} alt={f.restaurantName}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       <span style={{
                         position: 'absolute', top: 10, left: 10, background: 'var(--ink)',
@@ -362,7 +448,7 @@ export default function MyPage() {
                           borderRadius: 999, background: '#fff', color: 'var(--muted)',
                           fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer'
                         }}
-                          onClick={() => removeFavorite(f.favoriteId)}>
+                          onClick={() => void removeFavorite(f.restaurantId)}>
                           ❌
                         </button>
                       </div>
@@ -384,7 +470,7 @@ export default function MyPage() {
                   background: '#fff', color: 'var(--ink)', fontSize: '0.82rem', fontWeight: 800,
                   cursor: 'pointer', boxShadow: '2px 2px 0 var(--ink)'
                 }}
-                  onClick={markAllRead}>
+                  onClick={() => void markAllRead()}>
                   전체 읽음 처리
                 </button>
               </div>

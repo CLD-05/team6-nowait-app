@@ -4,7 +4,8 @@
 // ============================================
 
 export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
-export const IMAGE_BASE = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') ?? 'http://localhost:8080';
+export const IMAGE_BASE = import.meta.env.VITE_API_BASE_URL
+  || API_BASE.replace(/\/api\/v1\/?$/, '');
 
 // JWT 토큰 가져오기
 function getToken(): string | null {

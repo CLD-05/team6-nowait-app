@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 
 const USE_DUMMY = false;
-import { API_BASE, IMAGE_BASE } from '../lib/api';
+import { API_BASE, IMAGE_BASE, request } from '../lib/api';
 
 // ─── 더미 데이터 ───────────────────────────────────────────────
 const UNSPLASH: Record<string, string> = {
@@ -26,6 +26,85 @@ const DUMMY_REVIEWS = [
   { reviewId: 2, userName: '이영희', rating: 4, content: '전반적으로 만족스러웠어요. 대기시간이 조금 있었지만 음식 퀄리티는 훌륭했습니다.', createdAt: '2026-06-05' },
   { reviewId: 3, userName: '박민준', rating: 5, content: '노웨이트 덕분에 웨이팅 없이 바로 입장했어요!', createdAt: '2026-06-01' },
 ];
+
+type RestaurantDetail = {
+  id: number;
+  name: string;
+  category: string;
+  address: string;
+  phoneNumber?: string;
+  description?: string;
+  imageUrl?: string;
+  mainMenuName?: string;
+  parkingAvailable: string;
+  wifiAvailable: string;
+  multilingualMenuAvailable: string;
+  status?: string;
+  reservationAvailable?: string;
+  waitingAvailable?: string;
+  openTime?: string;
+  closeTime?: string;
+  closedDays?: string;
+};
+
+type RestaurantHour = {
+  dayOfWeek: 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT' | 'SUN';
+  openTime: string;
+  closeTime: string;
+  isRegularHoliday: 'Y' | 'N';
+};
+
+const DAY_LABEL: Record<RestaurantHour['dayOfWeek'], string> = {
+  MON: '월요일',
+  TUE: '화요일',
+  WED: '수요일',
+  THU: '목요일',
+  FRI: '금요일',
+  SAT: '토요일',
+  SUN: '일요일',
+};
+
+const JS_DAY_TO_KEY: RestaurantHour['dayOfWeek'][] = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+type Slot = {
+  slotId: number;
+  slotDate?: string;
+  slotTime: string;
+  totalCount: number;
+  remainCount: number;
+  available?: boolean;
+  _isPast?: boolean;
+};
+
+type WaitingSession = {
+  sessionId?: number;
+  status: string;
+  currentCount: number;
+  maxWaitingCount: number;
+};
+
+type Review = {
+  reviewId: number;
+  userId?: number;
+  userName: string;
+  restaurantId?: number;
+  reservationId?: number;
+  rating: number;
+  content: string;
+  visitedAt?: string;
+  createdAt: string;
+};
+
+type FavoriteSummary = {
+  favoriteId: number;
+  restaurantId: number;
+  restaurantName?: string;
+};
+
+function resolveImageUrl(imageUrl?: string) {
+  if (!imageUrl) return '/favicon.svg';
+  return /^https?:\/\//.test(imageUrl) ? imageUrl : `${IMAGE_BASE}${imageUrl}`;
+}
 
 function getDummyRestaurant(id: number) {
   const cat = CATEGORIES[id % CATEGORIES.length];
@@ -79,34 +158,35 @@ export default function RestaurantPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const reservationId = searchParams.get('reservationId');
 
   const [tab, setTab] = useState<'reserve' | 'waiting' | 'review'>(
     searchParams.get('tab') === 'review' ? 'review' : 'reserve'
   );
-  const [restaurant, setRestaurant] = useState<any>(null);
+  const [restaurant, setRestaurant] = useState<RestaurantDetail | null>(null);
+  const [restaurantHours, setRestaurantHours] = useState<RestaurantHour[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
 
   // 예약
   const [selectedDate, setSelectedDate] = useState(getTodayStr); // ← 오늘 날짜 초기값
-  const [slots, setSlots] = useState<any[]>([]);
+  const [slots, setSlots] = useState<Slot[]>([]);
   const [slotsUpdatedAt, setSlotsUpdatedAt] = useState<Date | null>(null); // 마지막 갱신 시각
-  const [selectedSlot, setSelectedSlot] = useState<any>(null);
+  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [headcount, setHeadcount] = useState(2);
   const [reserveLoading, setReserveLoading] = useState(false);
 
   // 웨이팅
-  const [waitingSession, setWaitingSession] = useState<any>(null);
+  const [waitingSession, setWaitingSession] = useState<WaitingSession | null>(null);
   const [waitingUpdatedAt, setWaitingUpdatedAt] = useState<Date | null>(null);
   const [partySize, setPartySize] = useState(2);
   const [waitingLoading, setWaitingLoading] = useState(false);
 
   // 리뷰
-  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewContent, setReviewContent] = useState('');
   const [reviewLoading, setReviewLoading] = useState(false);
-  const [hasVisited, setHasVisited] = useState(true);
 
   // polling 타이머 ref (cleanup 용)
   const slotTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -124,8 +204,13 @@ export default function RestaurantPage() {
         await new Promise(r => setTimeout(r, 300));
         setRestaurant(getDummyRestaurant(Number(id)));
       } else {
-        const res = await fetch(`${API_BASE}/restaurants/${id}`);
-        setRestaurant(await res.json());
+        const [detailResponse, hoursResponse] = await Promise.all([
+          fetch(`${API_BASE}/restaurants/${id}`),
+          fetch(`${API_BASE}/restaurants/${id}/hours`),
+        ]);
+        if (!detailResponse.ok) throw new Error('식당 정보를 불러오지 못했습니다.');
+        setRestaurant(await detailResponse.json() as RestaurantDetail);
+        setRestaurantHours(hoursResponse.ok ? await hoursResponse.json() as RestaurantHour[] : []);
       }
     } finally {
       setLoading(false);
@@ -138,20 +223,21 @@ export default function RestaurantPage() {
    */
   const fetchSlots = useCallback(async (date: string) => {
     try {
-      let raw: any[] = [];
+      let raw: Slot[] = [];
       if (USE_DUMMY) {
         raw = getDummySlots(date);
       } else {
         const res = await fetch(`${API_BASE}/restaurants/${id}/slots?date=${date}`);
-        const data = await res.json();
+        if (!res.ok) throw new Error('슬롯 정보를 불러오지 못했습니다.');
+        const data = await res.json() as { slots?: Slot[] } | Slot[];
         // 백엔드 응답: { restaurantId, date, slots: [...] }
         raw = Array.isArray(data) ? data : (data.slots || []);
       }
 
       // 지난 시간 슬롯을 remainCount=0 으로 표시 (서버 값 보존 + UI 비활성화)
       const processed = raw
-        .filter((slot: any) => slot.slotTime.slice(3, 5) === '00')
-        .map((slot: any) => ({
+        .filter(slot => slot.slotTime.slice(3, 5) === '00')
+        .map(slot => ({
           ...slot,
           _isPast: isPastSlot(slot.slotDate ?? date, slot.slotTime),
         }));
@@ -160,9 +246,9 @@ export default function RestaurantPage() {
       setSlotsUpdatedAt(new Date());
 
       // 선택된 슬롯이 이미 마감/과거가 됐으면 선택 해제
-      setSelectedSlot((prev: any) => {
+      setSelectedSlot(prev => {
         if (!prev) return prev;
-        const refreshed = processed.find((s: any) => s.slotId === prev.slotId);
+        const refreshed = processed.find(s => s.slotId === prev.slotId);
         if (!refreshed || refreshed.remainCount === 0 || refreshed._isPast) return null;
         return refreshed; // 최신 remainCount 반영
       });
@@ -179,7 +265,7 @@ export default function RestaurantPage() {
       } else {
         const res = await fetch(`${API_BASE}/restaurants/${id}/waiting-session`);
         if (res.ok) {
-          setWaitingSession(await res.json());
+          setWaitingSession(await res.json() as WaitingSession);
         } else {
           setWaitingSession(null);
         }
@@ -193,9 +279,18 @@ export default function RestaurantPage() {
   const fetchReviews = useCallback(async () => {
     try {
       if (USE_DUMMY) { setReviews(DUMMY_REVIEWS); return; }
-      const res = await fetch(`${API_BASE}/restaurants/${id}/reviews`);
-      setReviews(res.ok ? await res.json() : []);
+      const data = await request<Review[]>(`/restaurants/${id}/reviews`);
+      setReviews(data);
     } catch { setReviews([]); }
+  }, [id]);
+
+  const fetchFavoriteStatus = useCallback(async () => {
+    const token = localStorage.getItem('nowait_token');
+    if (!token || USE_DUMMY) return;
+    try {
+      const favorites = await request<FavoriteSummary[]>('/users/me/favorites');
+      setIsFavorite(favorites.some(f => String(f.restaurantId) === id));
+    } catch { /* 로그인 안 된 경우 등 무시 */ }
   }, [id]);
 
   // ── SSE 개인 알림 연결 ───────────────────────────────────────
@@ -211,7 +306,7 @@ export default function RestaurantPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
-      const { ticket } = await res.json();
+      const { ticket } = await res.json() as { ticket: string };
 
       // 2) SSE 연결
       const es = new EventSource(`${API_BASE}/notifications/stream?ticket=${ticket}`);
@@ -224,8 +319,6 @@ export default function RestaurantPage() {
       es.onerror = () => {
         es.close();
         sseRef.current = null;
-        // 연결 끊어지면 5초 후 재시도
-        setTimeout(connectSse, 5000);
       };
     } catch { /* SSE 실패해도 polling 으로 커버되므로 무시 */ }
   }, [fetchWaitingSession]);
@@ -246,30 +339,35 @@ export default function RestaurantPage() {
 
   // ── 초기 마운트 ──────────────────────────────────────────────
   useEffect(() => {
-    fetchRestaurant();
-    fetchWaitingSession();
-    fetchReviews();
+    // 데이터 요청의 setState는 비동기 응답 이후 실행된다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchRestaurant();
+    void fetchWaitingSession();
+    void fetchReviews();
+    void fetchFavoriteStatus();
     startWaitingPolling();
-    connectSse();
+    void connectSse();
 
     return () => {
       if (waitingTimerRef.current) clearInterval(waitingTimerRef.current);
       if (slotTimerRef.current) clearInterval(slotTimerRef.current);
       sseRef.current?.close();
     };
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [connectSse, fetchFavoriteStatus, fetchRestaurant, fetchReviews, fetchWaitingSession, startWaitingPolling]);
 
   // ── 날짜 변경 시 슬롯 즉시 조회 + polling 재설정 ─────────────
   useEffect(() => {
     if (!selectedDate) return;
+    // 날짜가 바뀌면 이전 선택을 즉시 초기화한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedSlot(null);
-    fetchSlots(selectedDate);
+    void fetchSlots(selectedDate);
     startSlotPolling(selectedDate);
 
     return () => {
       if (slotTimerRef.current) clearInterval(slotTimerRef.current);
     };
-  }, [selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchSlots, selectedDate, startSlotPolling]);
 
   // ── 액션 핸들러 ─────────────────────────────────────────────
 
@@ -297,7 +395,7 @@ export default function RestaurantPage() {
           const err = await res.json().catch(() => ({}));
           alert(err.message || '예약에 실패했습니다.');
           // 실패 후 슬롯 즉시 재조회 (다른 사람이 예약해서 마감됐을 수 있음)
-          fetchSlots(selectedDate);
+          void fetchSlots(selectedDate);
           return;
         }
         navigate('/mypage');
@@ -351,31 +449,60 @@ export default function RestaurantPage() {
         }, ...prev]);
         setReviewContent('');
         setReviewRating(5);
-        setHasVisited(false);
+        alert('리뷰가 등록됐어요!');
+      } else {
+        await request(`/reservations/${reservationId}/reviews`, {
+          method: 'POST',
+          body: JSON.stringify({ rating: reviewRating, content: reviewContent.trim() }),
+        });
+        setReviewContent('');
+        setReviewRating(5);
+        await fetchReviews();
         alert('리뷰가 등록됐어요!');
       }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '리뷰 등록에 실패했습니다.');
     } finally {
       setReviewLoading(false);
     }
   }
 
-  function toggleFavorite() { setIsFavorite(prev => !prev); }
+  async function toggleFavorite() {
+    const token = localStorage.getItem('nowait_token');
+    if (!token) { navigate('/auth'); return; }
+    try {
+      await request(`/restaurants/${id}/favorite`, { method: 'POST' });
+      setIsFavorite(prev => !prev);
+    } catch {
+      alert('즐겨찾기 처리에 실패했습니다.');
+    }
+  }
 
   // ── 렌더링 헬퍼 ─────────────────────────────────────────────
 
-  /** 업데이트 시각을 "방금 전 / N분 전" 형태로 표시 */
+  /** polling으로 마지막 갱신된 시각을 표시 */
   function formatUpdatedAt(date: Date | null) {
     if (!date) return '';
-    const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
-    if (diffSec < 10) return '방금 갱신됨';
-    if (diffSec < 60) return `${diffSec}초 전 갱신`;
-    return `${Math.floor(diffSec / 60)}분 전 갱신`;
+    return `${date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} 갱신`;
   }
 
   /** 슬롯 버튼이 선택 불가인지 판단 */
-  function isSlotDisabled(slot: any) {
+  function isSlotDisabled(slot: Slot) {
     return slot.remainCount === 0 || slot._isPast;
   }
+
+  const todayHour = restaurantHours.find(hour => hour.dayOfWeek === JS_DAY_TO_KEY[new Date().getDay()]);
+  const operatingHoursText = todayHour
+    ? todayHour.isRegularHoliday === 'Y'
+      ? '오늘 정기 휴무'
+      : `${todayHour.openTime.slice(0, 5)} ~ ${todayHour.closeTime.slice(0, 5)}`
+    : restaurant?.openTime && restaurant?.closeTime
+      ? `${restaurant.openTime} ~ ${restaurant.closeTime}`
+      : '매장 문의';
+  const regularHolidayText = restaurantHours
+    .filter(hour => hour.isRegularHoliday === 'Y')
+    .map(hour => DAY_LABEL[hour.dayOfWeek])
+    .join(', ');
 
   // ── 로딩 / 에러 ─────────────────────────────────────────────
   if (loading) return (
@@ -389,13 +516,22 @@ export default function RestaurantPage() {
     </div>
   );
 
+  const averageRating = reviews.length === 0
+    ? 0
+    : reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length;
+
   // ── 메인 렌더 ────────────────────────────────────────────────
   return (
     <div style={{ minHeight: '100vh', background: 'var(--cream)' }}>
 
       {/* 이미지 헤더 */}
-      <div style={{ position: 'relative', height: 220, overflow: 'hidden', background: '#f0e3d7' }}>
-        <img src={`${IMAGE_BASE}${restaurant.imageUrl}`} alt={restaurant.name}
+      <div style={{
+        position: 'relative', width: 'calc(100% - 40px)', maxWidth: 760, height: 240,
+        margin: '20px auto 0', overflow: 'hidden', background: '#f0e3d7',
+        border: '2.5px solid var(--ink)', borderRadius: 20,
+        boxShadow: '5px 5px 0 var(--ink)'
+      }}>
+        <img src={resolveImageUrl(restaurant.imageUrl)} alt={restaurant.name}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(35,26,20,0.7) 0%, transparent 50%)' }} />
 
@@ -405,7 +541,7 @@ export default function RestaurantPage() {
           cursor: 'pointer', fontWeight: 900, fontSize: '1rem', boxShadow: '3px 3px 0 var(--ink)'
         }}>←</button>
 
-        <button onClick={toggleFavorite} style={{
+        <button onClick={() => void toggleFavorite()} style={{
           position: 'absolute', top: 16, right: 16, width: 40, height: 40,
           borderRadius: '50%', background: isFavorite ? 'var(--tomato)' : '#fff',
           border: '2.5px solid var(--ink)', cursor: 'pointer', fontSize: '1.1rem',
@@ -422,7 +558,7 @@ export default function RestaurantPage() {
             {restaurant.name}
           </h1>
           <div style={{ fontSize: '0.88rem', marginTop: 4, opacity: 0.9 }}>
-            ⭐ {restaurant.avgRating} · 리뷰 {restaurant.reviewCount}개
+            ⭐ {averageRating.toFixed(1)} · 리뷰 {reviews.length}개
           </div>
         </div>
       </div>
@@ -439,10 +575,10 @@ export default function RestaurantPage() {
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
             {[
-              { icon: '🕐', label: '영업시간', value: `${restaurant.openTime} ~ ${restaurant.closeTime}` },
+              { icon: '🕐', label: '영업시간', value: operatingHoursText },
               { icon: '📍', label: '주소', value: restaurant.address },
               { icon: '📞', label: '전화', value: restaurant.phoneNumber },
-              { icon: '🚫', label: '휴무', value: restaurant.closedDays },
+              { icon: '🚫', label: '휴무', value: regularHolidayText ? `매주 ${regularHolidayText}` : restaurant.closedDays || '연중무휴' },
             ].map(item => (
               <div key={item.label} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                 <span>{item.icon}</span>
@@ -686,42 +822,73 @@ export default function RestaurantPage() {
         {/* ── 리뷰 탭 ─────────────────────────────────────────── */}
         {tab === 'review' && (
           <div>
-            {hasVisited && (
-              <div style={{
-                background: 'var(--amber)', border: '2.5px solid var(--ink)', borderRadius: 20,
-                boxShadow: '5px 5px 0 var(--ink)', padding: 24, marginBottom: 20
-              }}>
-                <div style={{ fontSize: '1rem', fontWeight: 900, marginBottom: 16 }}>✍️ 리뷰 작성하기</div>
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 800, marginBottom: 8 }}>평점</div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {[1, 2, 3, 4, 5].map(star => (
-                      <button key={star} onClick={() => setReviewRating(star)} style={{
-                        fontSize: '1.6rem', background: 'none', border: 'none', cursor: 'pointer',
-                        opacity: star <= reviewRating ? 1 : 0.3, transition: 'opacity 0.15s'
-                      }}>⭐</button>
-                    ))}
-                    <span style={{ fontSize: '0.88rem', fontWeight: 900, alignSelf: 'center', marginLeft: 4 }}>
-                      {reviewRating}점
-                    </span>
-                  </div>
+            <div style={{
+              background: '#fff', border: '2.5px solid var(--ink)', borderRadius: 20,
+              boxShadow: '5px 5px 0 var(--ink)', padding: 24, marginBottom: 20
+            }}>
+              <div style={{ fontSize: '1rem', fontWeight: 900, marginBottom: 16 }}>✍️ 리뷰 작성하기</div>
+              {!USE_DUMMY && !reservationId && (
+                <div style={{
+                  padding: '16px 18px', background: 'var(--cream)', borderRadius: 12,
+                  border: '2px solid var(--line)', color: 'var(--muted)',
+                  fontSize: '0.88rem', fontWeight: 700, lineHeight: 1.6,
+                }}>
+                  방문 완료된 예약이 있어야 리뷰를 작성할 수 있어요.
+                  <br />
+                  마이페이지 → 예약 내역 → 방문 완료 예약의 <strong>리뷰 작성</strong> 버튼을 이용해주세요.
                 </div>
-                <textarea value={reviewContent} onChange={e => setReviewContent(e.target.value)}
-                  placeholder="방문 경험을 자유롭게 남겨주세요 (최소 10자)"
-                  rows={4}
-                  style={{
-                    width: '100%', padding: '12px 16px', border: '2.5px solid var(--ink)',
-                    borderRadius: 12, fontSize: '0.92rem', fontFamily: 'inherit', resize: 'none',
-                    outline: 'none', background: '#fff', boxShadow: '3px 3px 0 var(--ink)'
-                  }} />
-                <button onClick={handleReview} disabled={reviewLoading} style={{
-                  marginTop: 12, width: '100%', padding: 14, background: 'var(--ink)',
-                  color: '#fff', border: '2.5px solid var(--ink)', borderRadius: 12,
-                  fontSize: '0.95rem', fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit',
-                  boxShadow: '3px 3px 0 var(--tomato)'
-                }}>{reviewLoading ? '등록 중...' : '리뷰 등록하기'}</button>
-              </div>
-            )}
+              )}
+              {(USE_DUMMY || reservationId) && (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 800, marginBottom: 8 }}>평점</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      {[1, 2, 3, 4, 5].map(star => {
+                        const selected = star <= reviewRating;
+                        return (
+                          <button
+                            key={star}
+                            type="button"
+                            aria-label={`${star}점`}
+                            onClick={() => setReviewRating(star)}
+                            style={{
+                              width: 42, height: 42, padding: 0, display: 'grid', placeItems: 'center',
+                              fontSize: '1.85rem', lineHeight: 1, background: 'transparent', border: 'none',
+                              cursor: 'pointer', opacity: selected ? 1 : 0.35,
+                              filter: selected
+                                ? 'drop-shadow(1px 0 0 var(--ink)) drop-shadow(-1px 0 0 var(--ink)) drop-shadow(0 1px 0 var(--ink)) drop-shadow(0 -1px 0 var(--ink))'
+                                : 'grayscale(1)',
+                              transform: selected ? 'scale(1.06)' : 'scale(0.94)',
+                              transition: 'opacity 0.15s, filter 0.15s, transform 0.15s',
+                            }}
+                          >
+                            ⭐
+                          </button>
+                        );
+                      })}
+                      <span style={{ fontSize: '0.88rem', fontWeight: 900, marginLeft: 4 }}>
+                        {reviewRating}점
+                      </span>
+                    </div>
+                  </div>
+                  <textarea value={reviewContent} onChange={e => setReviewContent(e.target.value)}
+                    placeholder="방문 경험을 자유롭게 남겨주세요 (최소 10자)"
+                    rows={4}
+                    style={{
+                      width: '100%', padding: '12px 16px', border: '2.5px solid var(--ink)',
+                      borderRadius: 12, fontSize: '0.92rem', fontFamily: 'inherit', resize: 'none',
+                      outline: 'none', background: '#fff', color: 'var(--ink)',
+                      boxShadow: '3px 3px 0 var(--ink)'
+                    }} />
+                  <button onClick={handleReview} disabled={reviewLoading} style={{
+                    marginTop: 12, width: '100%', padding: 14, background: 'var(--ink)',
+                    color: '#fff', border: '2.5px solid var(--ink)', borderRadius: 12,
+                    fontSize: '0.95rem', fontWeight: 900, cursor: 'pointer', fontFamily: 'inherit',
+                    boxShadow: '3px 3px 0 var(--tomato)'
+                  }}>{reviewLoading ? '등록 중...' : '리뷰 등록하기'}</button>
+                </>
+              )}
+            </div>
 
             <div style={{
               background: '#fff', border: '2.5px solid var(--ink)', borderRadius: 20,
@@ -730,13 +897,13 @@ export default function RestaurantPage() {
             }}>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '3rem', fontWeight: 900, lineHeight: 1, color: 'var(--tomato)' }}>
-                  {restaurant.avgRating}
+                  {averageRating.toFixed(1)}
                 </div>
-                <div style={{ fontSize: '1rem', marginTop: 4 }}>{'⭐'.repeat(Math.round(restaurant.avgRating))}</div>
+                <div style={{ fontSize: '1rem', marginTop: 4 }}>{'⭐'.repeat(Math.round(averageRating))}</div>
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--muted)' }}>
-                  총 {restaurant.reviewCount}개 리뷰
+                  총 {reviews.length}개 리뷰
                 </div>
                 <div style={{ marginTop: 8 }}>
                   {[5, 4, 3, 2, 1].map(star => (
@@ -776,7 +943,11 @@ export default function RestaurantPage() {
                     }}>👤</div>
                     <div>
                       <div style={{ fontWeight: 900, fontSize: '0.9rem' }}>{r.userName}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{r.createdAt}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                        {r.visitedAt
+                          ? new Date(r.visitedAt).toLocaleDateString('ko-KR')
+                          : new Date(r.createdAt).toLocaleDateString('ko-KR')}
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 2 }}>

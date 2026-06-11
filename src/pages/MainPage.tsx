@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect } from 'react';
-import { API_BASE } from '../lib/api';
+import { useCallback, useMemo, useState, useEffect } from 'react';
+import { API_BASE, IMAGE_BASE } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 
@@ -14,6 +14,21 @@ type Restaurant = {
   reservable: boolean;
   waitingAvailable: boolean;
 };
+
+type RestaurantApiResponse = {
+  id: number;
+  name: string;
+  category: CategoryKey;
+  mainMenuName: string;
+  imageUrl?: string;
+  reservationAvailable: string;
+  waitingAvailable: string;
+};
+
+function resolveImageUrl(imageUrl: string | undefined, category: CategoryKey) {
+  if (!imageUrl) return CATEGORY_IMAGES[category];
+  return /^https?:\/\//.test(imageUrl) ? imageUrl : `${IMAGE_BASE}${imageUrl}`;
+}
 
 const PAGE_SIZE = 12;
 
@@ -104,33 +119,27 @@ export default function MainPage() {
   const [appliedKeyword, setAppliedKeyword] = useState('');
   const [page, setPage] = useState(0);
   const [restaurants2, setRestaurants2] = useState<Restaurant[]>([]);
-  const [_loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (USE_DUMMY) return;
-    fetchRestaurants();
-  }, [category, page]);
-
-  async function fetchRestaurants() {
+  const fetchRestaurants = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), size: String(PAGE_SIZE) });
+      const params = new URLSearchParams();
       if (category) params.append('category', category);
+      if (appliedKeyword.trim()) params.append('keyword', appliedKeyword.trim());
       const res = await fetch(`${API_BASE}/restaurants?${params}`, {
         headers: { 'Content-Type': 'application/json' },
       });
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : (data.content || []);
+      if (!res.ok) throw new Error('식당 목록 조회에 실패했습니다.');
+      const list = await res.json() as RestaurantApiResponse[];
 
       // API 응답 필드명 → React 타입 매핑
-      setRestaurants2(list.map((r: any) => ({
+      setRestaurants2(list.map(r => ({
         id: r.id,
         name: r.name,
         category: r.category,
         mainMenuName: r.mainMenuName,
-        imageUrl: r.imageUrl
-          ? `http://localhost:8080${r.imageUrl}`
-          : CATEGORY_IMAGES[r.category as CategoryKey],
+        imageUrl: resolveImageUrl(r.imageUrl, r.category),
         reservable: r.reservationAvailable === 'Y',
         waitingAvailable: r.waitingAvailable === 'Y',
       })));
@@ -139,7 +148,14 @@ export default function MainPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [appliedKeyword, category]);
+
+  useEffect(() => {
+    if (USE_DUMMY) return;
+    // 비동기 요청 완료 후 상태를 갱신한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchRestaurants();
+  }, [fetchRestaurants]);
 
   const filteredRestaurants = useMemo(() => {
     const normalizedKeyword = appliedKeyword.trim();
@@ -155,10 +171,9 @@ export default function MainPage() {
     });
   }, [appliedKeyword, category]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRestaurants.length / PAGE_SIZE));
-  const restaurants = USE_DUMMY
-    ? filteredRestaurants.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-    : restaurants2;
+  const availableRestaurants = USE_DUMMY ? filteredRestaurants : restaurants2;
+  const totalPages = Math.max(1, Math.ceil(availableRestaurants.length / PAGE_SIZE));
+  const restaurants = availableRestaurants.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const handleSearch = () => {
     setPage(0);
@@ -394,11 +409,13 @@ export default function MainPage() {
               boxShadow: '3px 3px 0 var(--ink)',
             }}
           >
-            {filteredRestaurants.length}개 결과
+            {availableRestaurants.length}개 결과
           </span>
         </div>
 
-        {restaurants.length === 0 ? (
+        {loading ? (
+          <div className="spinner" />
+        ) : restaurants.length === 0 ? (
           <div className="empty-state card-base" style={{ background: '#fff' }}>
             <p>조건에 맞는 식당이 없습니다.</p>
           </div>

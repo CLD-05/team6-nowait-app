@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import Logo from '../components/Logo';
@@ -23,6 +23,11 @@ export default function AuthPage() {
   const [role, setRole] = useState<UserRole>('USER');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!localStorage.getItem('nowait_token')) return;
+    navigate('/', { replace: true });
+  }, [navigate]);
 
   const switchTab = (nextTab: AuthTab) => {
     setTab(nextTab);
@@ -52,7 +57,7 @@ export default function AuthPage() {
           }),
         );
         localStorage.removeItem('nowait_signup_role');
-        navigate('/');
+        navigate('/', { replace: true });
       } else {
         const response = await fetch(`${API_BASE}/auth/login`, {
           method: 'POST',
@@ -65,14 +70,21 @@ export default function AuthPage() {
           return;
         }
 
-        const data = await response.json();
+        const data = await response.json() as {
+          accessToken: string;
+          userId: number;
+          email: string;
+          name: string;
+          role: UserRole;
+        };
         localStorage.setItem('nowait_token', data.accessToken);
         localStorage.setItem('nowait_user', JSON.stringify({
           id: data.userId,
+          email: data.email,
           name: data.name,
           role: data.role,
         }));
-        navigate('/');
+        navigate('/', { replace: true });
       }
     } catch {
       setError('로그인 중 오류가 발생했습니다.');
@@ -102,14 +114,19 @@ export default function AuthPage() {
         alert('회원가입이 완료되었습니다. 로그인해주세요.');
         switchTab('login');
       } else {
-        const response = await fetch(`${API_BASE}/auth/signup`, {
+        const signupPath = role === 'OWNER' ? '/auth/signup/owner' : '/auth/signup';
+        const response = await fetch(`${API_BASE}${signupPath}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, name, role }),
+          body: JSON.stringify({ email, password, name }),
         });
 
         if (!response.ok) {
-          setError('이미 사용 중인 이메일입니다.');
+          const error = await response.json().catch(() => ({})) as {
+            message?: string;
+            errors?: Array<{ reason?: string }>;
+          };
+          setError(error.errors?.[0]?.reason || error.message || '회원가입에 실패했습니다.');
           return;
         }
 
