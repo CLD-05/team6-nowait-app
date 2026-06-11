@@ -54,11 +54,11 @@ public class Slot extends BaseTimeEntity {
     @Column(name = "remain_count", nullable = false)
     private int remainCount;
     
-    @Column(name = "min_headcount", nullable = true)
+    @Column(name = "min_headcount", nullable = false)
     private int minHeadcount = 1;
-    
-    @Column (name = "max_headcount", nullable = true)
-    private Integer maxHeadcount;
+
+    @Column(name = "max_headcount", nullable = false)
+    private int maxHeadcount = 8;
 
     @Builder
     public Slot(Restaurant restaurant, LocalDate slotDate, LocalTime slotTime,
@@ -68,9 +68,9 @@ public class Slot extends BaseTimeEntity {
         this.slotTime = slotTime;
         this.totalCount = totalCount;
         this.remainCount = totalCount;
-     // 📜 값을 안 넣어주면(Null이면) 기본값 1이 들어가도록 안전장치 설정!
+        // 📜 값 미지정 시 ERD 기본값(min=1, max=8) 적용
         this.minHeadcount = (minHeadcount != null) ? minHeadcount : 1;
-        this.maxHeadcount = maxHeadcount; // 최대 인원은 없으면 없는 대로 Null 유지
+        this.maxHeadcount = (maxHeadcount != null) ? maxHeadcount : 8;
     }
 
     public void decrease() {
@@ -101,6 +101,8 @@ public class Slot extends BaseTimeEntity {
         if (minHeadcount != null) {
             this.minHeadcount = minHeadcount;
         }
-        this.maxHeadcount = maxHeadcount; // 최대 인원은 Null로 변경될 수도 있으므로 그대로 갱신
+        if (maxHeadcount != null) {
+            this.maxHeadcount = maxHeadcount;
+        }
     }
 }
