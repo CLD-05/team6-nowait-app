@@ -77,7 +77,7 @@ public class WaitingCallTimeoutScheduler {
         if (data.calledAt() == null || data.calledAt() > threshold) continue;
 
         try {
-          waitingRedis.cancelByOwner(token, sessionId, data.userId());
+          waitingRedis.cancelByOwner(token, sessionId, data.userId(), data.restaurantId());
           expired++;
           log.info("Auto-cancelled timed-out CALLED. token={}", token);
         } catch (Exception e) {
