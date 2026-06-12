@@ -1,5 +1,6 @@
 package com.nowait.domain.reservation.entity;
 
+import com.nowait.domain.reservation.type.RejectionReason;
 import com.nowait.domain.reservation.type.ReservationStatus;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.slot.entity.Slot;
@@ -69,6 +70,13 @@ public class Reservation extends BaseTimeEntity {
     @Column(name = "no_show_at")
     private LocalDateTime noShowAt;
 
+    @Column(name = "rejected_at")
+    private LocalDateTime rejectedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "rejection_reason")
+    private RejectionReason rejectionReason;
+
     private Reservation(String reservationToken, User user, Restaurant restaurant, Slot slot,
         int headcount) {
         this.reservationToken = reservationToken;
@@ -76,7 +84,7 @@ public class Reservation extends BaseTimeEntity {
         this.restaurant = restaurant;
         this.slot = slot;
         this.headcount = headcount;
-        this.status = ReservationStatus.CONFIRMED;
+        this.status = ReservationStatus.PENDING;
     }
 
     /* Worker 전용 — Redis Hash 의 현재 상태로 신규 행 생성 */
@@ -95,6 +103,12 @@ public class Reservation extends BaseTimeEntity {
         this.visitedAt = visitedAt;
         this.canceledAt = canceledAt;
         this.noShowAt = noShowAt;
+    }
+
+    public void syncRejection(RejectionReason reason, LocalDateTime rejectedAt) {
+        this.status = ReservationStatus.REJECTED;
+        this.rejectionReason = reason;
+        this.rejectedAt = rejectedAt;
     }
 
     public boolean isOwnedBy(Long userId) {

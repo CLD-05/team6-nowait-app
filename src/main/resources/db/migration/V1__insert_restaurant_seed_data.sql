@@ -2,7 +2,7 @@
 -- Source: restaurant_dataset.csv
 -- Use with Flyway as V2__insert_restaurant_seed_data.sql
 
-INSERT INTO restaurant (
+INSERT IGNORE INTO restaurant (
     restaurant_id,
     restaurant_name,
     category,

@@ -4,6 +4,7 @@ import com.nowait.domain.reservation.entity.Reservation;
 import com.nowait.domain.reservation.redis.ReservationRedisLuaExecutor;
 import com.nowait.domain.reservation.redis.ReservationTokenData;
 import com.nowait.domain.reservation.repository.ReservationRepository;
+import com.nowait.domain.reservation.type.RejectionReason;
 import com.nowait.domain.reservation.type.ReservationStatus;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
@@ -63,19 +64,23 @@ public class ReservationSyncHandler {
     LocalDateTime visitedAt = toLdtNullable(data.visitedAt());
     LocalDateTime canceledAt = toLdtNullable(data.canceledAt());
     LocalDateTime noShowAt = toLdtNullable(data.noShowAt());
+    LocalDateTime rejectedAt = toLdtNullable(data.rejectedAt());
+    RejectionReason rejectionReason = data.rejectionReason() == null ? null
+        : RejectionReason.valueOf(data.rejectionReason());
 
     reservationRepository.findByReservationToken(token).ifPresentOrElse(
-        existing -> applyUpdate(existing, data, visitedAt, canceledAt, noShowAt),
-        () -> applyInsert(token, data, visitedAt, canceledAt, noShowAt)
+        existing -> applyUpdate(existing, data, visitedAt, canceledAt, noShowAt, rejectedAt, rejectionReason),
+        () -> applyInsert(token, data, visitedAt, canceledAt, noShowAt, rejectedAt, rejectionReason)
     );
 
     log.debug("Synced. token={} status={}", token, data.status());
     return true;
   }
 
-  /* 신규 INSERT — CONFIRMED 면 슬롯 점유 차감 */
+  /* 신규 INSERT */
   private void applyInsert(String token, ReservationTokenData data,
-      LocalDateTime visitedAt, LocalDateTime canceledAt, LocalDateTime noShowAt) {
+      LocalDateTime visitedAt, LocalDateTime canceledAt, LocalDateTime noShowAt,
+      LocalDateTime rejectedAt, RejectionReason rejectionReason) {
     User user = userRepository.getReferenceById(data.userId());
     Restaurant restaurant = restaurantRepository.getReferenceById(data.restaurantId());
     Slot slot = slotRepository.findById(data.slotId())
@@ -84,28 +89,40 @@ public class ReservationSyncHandler {
 
     Reservation entity = Reservation.register(token, user, restaurant, slot, data.headcount());
 
-    /* 등록 후 곧바로 상태 전이가 일어난 경우 (CANCELLED/VISITED/NO_SHOW) 한 번에 반영 */
-    if (data.status() != ReservationStatus.CONFIRMED) {
-      entity.syncFromRedis(data.status(), visitedAt, canceledAt, noShowAt);
+    ReservationStatus status = data.status();
+
+    if (status == ReservationStatus.REJECTED) {
+      entity.syncRejection(rejectionReason, rejectedAt);
+    } else if (status == ReservationStatus.CONFIRMED) {
+      entity.syncFromRedis(status, null, null, null);
+    } else if (status != ReservationStatus.PENDING) {
+      entity.syncFromRedis(status, visitedAt, canceledAt, noShowAt);
     }
     reservationRepository.save(entity);
 
-    /* 슬롯 점유 — CONFIRMED/VISITED/NO_SHOW 는 차감 (CANCELLED 만 미차감) */
-    if (data.status() != ReservationStatus.CANCELLED) {
+    /* 슬롯 점유: PENDING/CONFIRMED/VISITED/NO_SHOW 차감. CANCELLED/REJECTED 는 미차감 (이미 복구됨) */
+    if (status != ReservationStatus.CANCELLED && status != ReservationStatus.REJECTED) {
       decreaseSlotSafely(slot);
     }
   }
 
   /* UPDATE — 직전 상태와 신규 상태 비교해서 정원 멱등 조정 */
   private void applyUpdate(Reservation existing, ReservationTokenData data,
-      LocalDateTime visitedAt, LocalDateTime canceledAt, LocalDateTime noShowAt) {
+      LocalDateTime visitedAt, LocalDateTime canceledAt, LocalDateTime noShowAt,
+      LocalDateTime rejectedAt, RejectionReason rejectionReason) {
     ReservationStatus prev = existing.getStatus();
     ReservationStatus next = data.status();
 
-    existing.syncFromRedis(next, visitedAt, canceledAt, noShowAt);
+    if (next == ReservationStatus.REJECTED) {
+      existing.syncRejection(rejectionReason, rejectedAt);
+    } else {
+      existing.syncFromRedis(next, visitedAt, canceledAt, noShowAt);
+    }
 
-    /* 활성 → CANCELLED 전이 시에만 정원 복구. 그 외 전이는 점유 유지 */
-    if (prev == ReservationStatus.CONFIRMED && next == ReservationStatus.CANCELLED) {
+    /* 활성(PENDING/CONFIRMED) → CANCELLED 또는 REJECTED 전이 시 정원 복구 */
+    boolean wasActive = prev == ReservationStatus.CONFIRMED || prev == ReservationStatus.PENDING;
+    boolean isFreed = next == ReservationStatus.CANCELLED || next == ReservationStatus.REJECTED;
+    if (wasActive && isFreed) {
       increaseSlotSafely(existing.getSlot());
     }
   }

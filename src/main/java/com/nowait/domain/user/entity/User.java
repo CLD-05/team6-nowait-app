@@ -45,6 +45,7 @@ public class User extends BaseTimeEntity {
 	
 	public void withdrawUser() {
 	    this.isDeleted = "Y";
+	    this.email = "deleted_" + this.id + "@withdrawn.nowait";
 	}
 
 	public void updateProfile(String name) {

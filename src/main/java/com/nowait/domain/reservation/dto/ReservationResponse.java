@@ -2,6 +2,7 @@ package com.nowait.domain.reservation.dto;
 
 import com.nowait.domain.reservation.entity.Reservation;
 import com.nowait.domain.reservation.redis.ReservationTokenData;
+import com.nowait.domain.reservation.type.RejectionReason;
 import com.nowait.domain.reservation.type.ReservationStatus;
 
 import java.time.Instant;
@@ -22,6 +23,7 @@ public record ReservationResponse(
     Long reservationId,
     Long restaurantId,
     String restaurantName,
+    String userName,
     Long slotId,
     LocalDate slotDate,
     LocalTime slotTime,
@@ -30,24 +32,31 @@ public record ReservationResponse(
     LocalDateTime createdAt,
     LocalDateTime visitedAt,
     LocalDateTime canceledAt,
-    LocalDateTime noShowAt
+    LocalDateTime noShowAt,
+    LocalDateTime rejectedAt,
+    RejectionReason rejectionReason
 ) {
     /* DB 엔티티 기반 — 과거/조회 응답 */
     public static ReservationResponse from(Reservation reservation) {
+        var restaurant = reservation.getRestaurant();
+        var slot = reservation.getSlot();
         return new ReservationResponse(
             reservation.getReservationToken(),
             reservation.getId(),
-            reservation.getRestaurant().getId(),
-            reservation.getRestaurant().getName(),
-            reservation.getSlot().getId(),
-            reservation.getSlot().getSlotDate(),
-            reservation.getSlot().getSlotTime(),
+            restaurant != null ? restaurant.getId() : null,
+            restaurant != null ? restaurant.getName() : "매장",
+            reservation.getUser().getName(),
+            slot != null ? slot.getId() : null,
+            slot != null ? slot.getSlotDate() : null,
+            slot != null ? slot.getSlotTime() : null,
             reservation.getHeadcount(),
             reservation.getStatus(),
             reservation.getCreatedAt(),
             reservation.getVisitedAt(),
             reservation.getCanceledAt(),
-            reservation.getNoShowAt()
+            reservation.getNoShowAt(),
+            reservation.getRejectedAt(),
+            reservation.getRejectionReason()
         );
     }
 
@@ -56,14 +65,18 @@ public record ReservationResponse(
         String token,
         ReservationTokenData data,
         String restaurantName,
+        String userName,
         LocalDate slotDate,
         LocalTime slotTime
     ) {
+        RejectionReason rejReason = data.rejectionReason() == null ? null
+            : RejectionReason.valueOf(data.rejectionReason());
         return new ReservationResponse(
             token,
             null,
             data.restaurantId(),
             restaurantName,
+            userName,
             data.slotId(),
             slotDate,
             slotTime,
@@ -72,7 +85,9 @@ public record ReservationResponse(
             toLdt(data.createdAt()),
             toLdtNullable(data.visitedAt()),
             toLdtNullable(data.canceledAt()),
-            toLdtNullable(data.noShowAt())
+            toLdtNullable(data.noShowAt()),
+            toLdtNullable(data.rejectedAt()),
+            rejReason
         );
     }
 

@@ -8,6 +8,8 @@ package com.nowait.domain.reservation.redis;
  *   reservation:slot:{slotId}:count              String  슬롯 점유 카운터 (INCR/DECR)
  *   reservation:slot:{slotId}:queue              ZSET    슬롯의 활성 토큰 (score=createdAt)
  *   reservation:user-slot:{uid}:{slotId}         String  동일 슬롯 중복 예약 방지
+ *   reservation:user:{uid}:tokens                ZSET    사용자별 전체 토큰 목록 (score=createdAt)
+ *   reservation:restaurant:{rid}:tokens          ZSET    매장별 전체 토큰 목록 (score=createdAt)
  *   reservation:noshow-candidates                ZSET    score=reservationTime, 스케줄러 만료 탐색
  *   reservation:pending-sync                     List    Worker 동기화 큐
  *   reservation:processing                       List    Worker in-flight
@@ -35,6 +37,16 @@ public final class ReservationRedisKeys {
   /* 사용자-슬롯 페어 (동일 슬롯 중복 방지) */
   public static String userSlot(Long userId, Long slotId) {
     return "reservation:user-slot:" + userId + ":" + slotId;
+  }
+
+  /* 사용자별 전체 토큰 목록 ZSET (score = createdAt millis) */
+  public static String userTokens(Long userId) {
+    return "reservation:user:" + userId + ":tokens";
+  }
+
+  /* 매장별 전체 토큰 목록 ZSET (score = createdAt millis) */
+  public static String restaurantTokens(Long restaurantId) {
+    return "reservation:restaurant:" + restaurantId + ":tokens";
   }
 
   /* 노쇼 스케줄러 ZSET (score = 예약 시각 millis) */

@@ -36,18 +36,24 @@ public class ReservationRedisLuaExecutor {
   private final RedisScript<List> cancelScript;
   private final RedisScript<List> visitScript;
   private final RedisScript<List> noShowScript;
+  private final RedisScript<List> approveScript;
+  private final RedisScript<List> rejectScript;
 
   public ReservationRedisLuaExecutor(
       StringRedisTemplate redisTemplate,
       @Qualifier("reservationCreateScript") RedisScript<List> createScript,
       @Qualifier("reservationCancelScript") RedisScript<List> cancelScript,
       @Qualifier("reservationVisitScript") RedisScript<List> visitScript,
-      @Qualifier("reservationNoShowScript") RedisScript<List> noShowScript) {
+      @Qualifier("reservationNoShowScript") RedisScript<List> noShowScript,
+      @Qualifier("reservationApproveScript") RedisScript<List> approveScript,
+      @Qualifier("reservationRejectScript") RedisScript<List> rejectScript) {
     this.redisTemplate = redisTemplate;
     this.createScript = createScript;
     this.cancelScript = cancelScript;
     this.visitScript = visitScript;
     this.noShowScript = noShowScript;
+    this.approveScript = approveScript;
+    this.rejectScript = rejectScript;
   }
 
   /* 예약 생성 — 성공 시 (token, createdAt) 반환 */
@@ -64,7 +70,9 @@ public class ReservationRedisLuaExecutor {
         ReservationRedisKeys.token(token),
         ReservationRedisKeys.userSlot(userId, slotId),
         ReservationRedisKeys.NOSHOW_CANDIDATES,
-        ReservationRedisKeys.PENDING_SYNC
+        ReservationRedisKeys.PENDING_SYNC,
+        ReservationRedisKeys.userTokens(userId),
+        ReservationRedisKeys.restaurantTokens(restaurantId)
     );
 
     List<?> result = redisTemplate.execute(
@@ -130,6 +138,47 @@ public class ReservationRedisLuaExecutor {
     }
   }
 
+  /* 예약 승인 (점주) — PENDING → CONFIRMED */
+  public void approve(String token) {
+    List<String> keys = List.of(
+        ReservationRedisKeys.token(token),
+        ReservationRedisKeys.NOSHOW_CANDIDATES,
+        ReservationRedisKeys.PENDING_SYNC
+    );
+
+    List<?> result = redisTemplate.execute(
+        approveScript, keys,
+        token,
+        String.valueOf(System.currentTimeMillis())
+    );
+
+    if (isFailure(result)) {
+      throw mapError(result, "approve");
+    }
+  }
+
+  /* 예약 거부 (점주) — PENDING → REJECTED */
+  public void reject(String token, Long userId, Long slotId, String rejectionReason) {
+    List<String> keys = List.of(
+        ReservationRedisKeys.token(token),
+        ReservationRedisKeys.slotQueue(slotId),
+        ReservationRedisKeys.slotCount(slotId),
+        ReservationRedisKeys.userSlot(userId, slotId),
+        ReservationRedisKeys.PENDING_SYNC
+    );
+
+    List<?> result = redisTemplate.execute(
+        rejectScript, keys,
+        token,
+        String.valueOf(System.currentTimeMillis()),
+        rejectionReason
+    );
+
+    if (isFailure(result)) {
+      throw mapError(result, "reject");
+    }
+  }
+
   /* 노쇼 처리 (스케줄러 또는 점주) */
   public void noShow(String token, Long userId, Long slotId) {
     List<String> keys = List.of(
@@ -169,6 +218,33 @@ public class ReservationRedisLuaExecutor {
     Set<String> tokens = redisTemplate.opsForZSet()
         .range(ReservationRedisKeys.slotQueue(slotId), 0, -1);
     return tokens == null ? Collections.emptyList() : new ArrayList<>(tokens);
+  }
+
+  /* 사용자별 전체 토큰 목록 (score=createdAt 내림차순) */
+  public List<String> listUserTokens(Long userId) {
+    Set<String> tokens = redisTemplate.opsForZSet()
+        .reverseRange(ReservationRedisKeys.userTokens(userId), 0, -1);
+    return tokens == null ? Collections.emptyList() : new ArrayList<>(tokens);
+  }
+
+  /* 매장별 전체 토큰 목록 (score=createdAt 내림차순) */
+  public List<String> listRestaurantTokens(Long restaurantId) {
+    Set<String> tokens = redisTemplate.opsForZSet()
+        .reverseRange(ReservationRedisKeys.restaurantTokens(restaurantId), 0, -1);
+    return tokens == null ? Collections.emptyList() : new ArrayList<>(tokens);
+  }
+
+  /* Worker 큐 토큰 목록 (미sync 예약 조회용) */
+  public List<String> listPendingSyncTokens() {
+    List<String> tokens = redisTemplate.opsForList()
+        .range(ReservationRedisKeys.PENDING_SYNC, 0, -1);
+    return tokens == null ? Collections.emptyList() : tokens;
+  }
+
+  public List<String> listProcessingTokens() {
+    List<String> tokens = redisTemplate.opsForList()
+        .range(ReservationRedisKeys.PROCESSING, 0, -1);
+    return tokens == null ? Collections.emptyList() : tokens;
   }
 
   /* 노쇼 스케줄러 — 예약시각 + grace 가 지난 토큰들 */

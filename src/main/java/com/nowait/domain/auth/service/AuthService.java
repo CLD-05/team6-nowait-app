@@ -68,7 +68,7 @@ public class AuthService {
   // 로그인. 이메일+비밀번호 검증 후 JWT 발급.
 
   public TokenResponse login(LoginRequest request) {
-    User user = userRepository.findByEmail(request.email())
+    User user = userRepository.findByEmailAndIsDeleted(request.email(), "N")
         .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
 
     if (!passwordEncoder.matches(request.password(), user.getPassword())) {
@@ -85,7 +85,7 @@ public class AuthService {
   }
 
   private void validateEmailNotDuplicated(String email) {
-    if (userRepository.existsByEmail(email)) {
+    if (userRepository.existsByEmailAndIsDeleted(email, "N")) {
       throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
     }
   }

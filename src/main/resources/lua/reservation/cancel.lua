@@ -25,7 +25,7 @@ if userId ~= ARGV[2] then
 end
 
 local status = redis.call('HGET', KEYS[1], 'status')
-if status ~= 'CONFIRMED' then
+if status ~= 'CONFIRMED' and status ~= 'PENDING' then
   return { 0, 'ALREADY_PROCESSED' }
 end
 

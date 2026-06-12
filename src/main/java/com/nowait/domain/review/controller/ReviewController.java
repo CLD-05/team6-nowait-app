@@ -20,17 +20,18 @@ public class ReviewController {
     private final ReviewService reviewService;
 
     /**
-     * POST /api/reservations/{reservationId}/reviews
+     * POST /api/v1/reservations/{reservationToken}/reviews
      * 리뷰 작성 (인증 필요, 방문 완료 상태에서만 가능)
+     * reservationToken(UUID) 기반 — DB sync 전에도 작성 가능
      */
-    @PostMapping("/api/v1/reservations/{reservationId}/reviews")
+    @PostMapping("/api/v1/reservations/{reservationToken}/reviews")
     public ResponseEntity<ReviewResponse> createReview(
         @AuthenticationPrincipal CustomUserDetails userDetails,
-        @PathVariable Long reservationId,
+        @PathVariable String reservationToken,
         @Valid @RequestBody ReviewCreateRequest request
     ) {
         ReviewResponse response = reviewService.createReview(
-            userDetails.getUserId(), reservationId, request
+            userDetails.getUserId(), reservationToken, request
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }

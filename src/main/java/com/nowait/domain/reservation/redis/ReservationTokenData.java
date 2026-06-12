@@ -4,17 +4,6 @@ import com.nowait.domain.reservation.type.ReservationStatus;
 
 import java.util.Map;
 
-/*
- * Redis Hash 에 저장된 예약 1건의 상세 데이터.
- *
- * 필드:
- *   userId, restaurantId, slotId : 식별자
- *   headcount                    : 인원
- *   status                       : CONFIRMED / VISITED / CANCELLED / NO_SHOW
- *   createdAt                    : 생성 시각 (epoch millis)
- *   reservationTime              : 예약 시각 (slot date+time, epoch millis) — 노쇼 스케줄러 기준
- *   visitedAt / canceledAt / noShowAt : 상태 전이 시각 (nullable)
- */
 public record ReservationTokenData(
     Long userId,
     Long restaurantId,
@@ -25,7 +14,9 @@ public record ReservationTokenData(
     long reservationTime,
     Long visitedAt,
     Long canceledAt,
-    Long noShowAt
+    Long noShowAt,
+    Long rejectedAt,
+    String rejectionReason
 ) {
 
   public static ReservationTokenData fromHash(Map<Object, Object> hash) {
@@ -40,7 +31,9 @@ public record ReservationTokenData(
         parseLong(hash.get("reservationTime")),
         parseLongOrNull(hash.get("visitedAt")),
         parseLongOrNull(hash.get("canceledAt")),
-        parseLongOrNull(hash.get("noShowAt"))
+        parseLongOrNull(hash.get("noShowAt")),
+        parseLongOrNull(hash.get("rejectedAt")),
+        parseStringOrNull(hash.get("rejectionReason"))
     );
   }
 
@@ -56,5 +49,11 @@ public record ReservationTokenData(
 
   private static int parseInt(Object o) {
     return Integer.parseInt(String.valueOf(o));
+  }
+
+  private static String parseStringOrNull(Object o) {
+    if (o == null) return null;
+    String s = String.valueOf(o);
+    return s.isBlank() ? null : s;
   }
 }

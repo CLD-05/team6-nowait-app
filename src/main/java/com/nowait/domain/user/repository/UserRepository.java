@@ -9,6 +9,10 @@ import com.nowait.domain.user.entity.User;
 public interface UserRepository extends JpaRepository<User, Long>{
 	
 	Optional<User> findByEmail(String email);
+
+	Optional<User> findByEmailAndIsDeleted(String email, String isDeleted);
 	
 	boolean existsByEmail(String email);
+
+	boolean existsByEmailAndIsDeleted(String email, String isDeleted);
 }

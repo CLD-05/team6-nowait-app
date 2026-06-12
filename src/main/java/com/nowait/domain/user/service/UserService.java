@@ -53,8 +53,10 @@ public class UserService {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        // 2. 회원 소프트 딜리트
+        // 2. 회원 소프트 딜리트 + 이메일 익명화 (unique 제약 해제 → 재가입 허용)
         user.withdrawUser();
+        userRepository.save(user);
+        userRepository.flush();
 
         // 3. 🌟 [연쇄 반응] 이 사람이 사장님(점주)이라면, 운영 중인 모든 식당도 강제 소프트 딜리트!
         List<Restaurant> myRestaurants = restaurantRepository.findByOwnerIdAndIsDeleted(userId, "N");

@@ -11,7 +11,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.nowait.domain.notification.service.NotificationService;
 import com.nowait.domain.notification.type.NotificationType;
-import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.entity.RestaurantHour;
 import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
@@ -56,7 +55,6 @@ public class WaitingService {
   private static final int NEAR_CALL_THRESHOLD = 5;
   
   private final WaitingSessionService waitingSessionService;
-  private final RestaurantOwnerRepository restaurantOwnerRepository;
   private final RestaurantRepository restaurantRepository;
   private final WaitingRepository waitingRepository;
   private final WaitingCallLogRepository waitingCallLogRepository;
@@ -208,7 +206,13 @@ public class WaitingService {
   public List<WaitingResponse> getOwnerWaitings(Long restaurantId, Long loginUserId) {
     verifyOwnership(restaurantId, loginUserId);
 
-    Long sessionId = findTodaySessionId(restaurantId);
+    // 오늘 세션이 없으면 빈 목록 반환 (세션 미오픈 상태)
+    Long sessionId;
+    try {
+      sessionId = findTodaySessionId(restaurantId);
+    } catch (BusinessException e) {
+      return List.of();
+    }
     List<String> tokens = waitingRedis.listActiveTokens(sessionId);
 
     return tokens.stream()
@@ -311,7 +315,9 @@ public class WaitingService {
   }
 
   private void verifyOwnership(Long restaurantId, Long loginUserId) {
-    if (!restaurantOwnerRepository.existsByUserIdAndRestaurantId(loginUserId, restaurantId)) {
+    Restaurant restaurant = restaurantRepository.findById(restaurantId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+    if (!loginUserId.equals(restaurant.getOwnerId())) {
       throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
     }
   }
