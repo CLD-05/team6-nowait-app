@@ -17,4 +17,7 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
 
     // 예약 상세 조회 (연관 엔티티 함께)
     Optional<Reservation> findWithDetailsById(Long id);
+
+    // Worker / 조회: token 으로 기존 행 조회 (idempotent upsert 의 키)
+    Optional<Reservation> findByReservationToken(String reservationToken);
 }

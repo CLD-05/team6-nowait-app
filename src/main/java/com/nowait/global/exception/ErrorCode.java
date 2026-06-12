@@ -7,6 +7,13 @@ import org.springframework.http.HttpStatus;
 public enum ErrorCode {
 
     // 400 Bad Request
+	RESTAURANT_NOT_OPEN(HttpStatus.BAD_REQUEST, "R400", "현재 매장이 영업 중(OPEN) 상태가 아닙니다."),
+	WAITING_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "W400", "현재 매장이 웨이팅 기능을 제공하지 않는 상태입니다."),
+	RESTAURANT_CLOSED_DAY(HttpStatus.BAD_REQUEST, "RH400", "해당 날짜는 식당의 정기 휴무일입니다."),
+    NOT_OPERATING_TIME(HttpStatus.BAD_REQUEST, "RH401", "식당 영업시간 외에는 예약이 불가능합니다."),
+	RESERVATION_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "RV400", "현재 매장이 예약 기능을 제공하지 않는 상태입니다."),
+	INVALID_MIN_HEADCOUNT(HttpStatus.BAD_REQUEST, "RV401", "예약 최소 인원보다 적은 인원입니다."),
+	INVALID_MAX_HEADCOUNT(HttpStatus.BAD_REQUEST, "RV402", "해당 시간대의 예약 가능 최대 인원을 초과했습니다."),
     INVALID_INPUT_VALUE(HttpStatus.BAD_REQUEST, "C400", "잘못된 입력값입니다."),
     MALFORMED_JSON(HttpStatus.BAD_REQUEST, "C401", "요청 형식이 올바르지 않습니다."),
     INVALID_STATUS_TRANSITION(HttpStatus.BAD_REQUEST, "C402", "현재 상태에서는 해당 작업을 수행할 수 없습니다."),
@@ -17,11 +24,14 @@ public enum ErrorCode {
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "A401", "이메일 또는 비밀번호가 일치하지 않습니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "A402", "유효하지 않은 토큰입니다."),
     EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "A403", "만료된 토큰입니다."),
+    INVALID_SSE_TICKET(HttpStatus.UNAUTHORIZED, "SSE401", "유효하지 않거나 만료된 SSE 티켓입니다."),
 
     // 403 Forbidden
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "A404", "접근 권한이 없습니다."),
     NOT_RESTAURANT_OWNER(HttpStatus.FORBIDDEN, "A405", "해당 식당의 점주가 아닙니다."),
     RESERVATION_ACCESS_DENIED(HttpStatus.FORBIDDEN, "RS403", "본인의 예약이 아닙니다."),
+    REVIEW_ACCESS_DENIED(HttpStatus.FORBIDDEN, "RV403", "본인의 리뷰가 아닙니다."),
+    NOTIFICATION_ACCESS_DENIED(HttpStatus.FORBIDDEN, "N403", "본인의 알림이 아닙니다."),
 
     // 404 Not Found
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U404", "사용자를 찾을 수 없습니다."),
@@ -30,6 +40,9 @@ public enum ErrorCode {
     RESERVATION_NOT_FOUND(HttpStatus.NOT_FOUND, "RS404", "예약을 찾을 수 없습니다."),
     WAITING_NOT_FOUND(HttpStatus.NOT_FOUND, "W404", "웨이팅을 찾을 수 없습니다."),
     WAITING_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "WS404", "운영 중인 웨이팅 세션이 없습니다."),
+    REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "RV404", "리뷰를 찾을 수 없습니다."),
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "N404", "알림을 찾을 수 없습니다."),
+    OPERATING_INFO_NOT_FOUND(HttpStatus.NOT_FOUND, "RH404", "해당 식당의 요일별 영업시간 정보가 존재하지 않습니다."),
 
     // 409 Conflict
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U409", "이미 사용 중인 이메일입니다."),
@@ -43,6 +56,10 @@ public enum ErrorCode {
     ALREADY_PROCESSED_WAITING(HttpStatus.CONFLICT, "W411", "이미 처리된 웨이팅입니다."),
     WAITING_SESSION_ALREADY_EXISTS(HttpStatus.CONFLICT, "WS409", "오늘 이미 오픈된 세션이 있습니다."),
     WAITING_SESSION_NOT_ACCEPTING(HttpStatus.CONFLICT, "WS410", "현재 웨이팅을 받을 수 없는 상태입니다."),
+    OWNER_ALREADY_EXISTS(HttpStatus.CONFLICT, "RO409", "이미 다른 식당의 점주로 등록된 유저입니다."),
+    RESTAURANT_ALREADY_HAS_OWNER(HttpStatus.CONFLICT, "RO410", "이미 점주가 지정된 식당입니다."),
+    REVIEW_NOT_VISITED(HttpStatus.CONFLICT, "RV409", "방문 완료된 예약에 대해서만 리뷰를 작성할 수 있습니다."),
+    REVIEW_ALREADY_EXISTS(HttpStatus.CONFLICT, "RV410", "이미 작성된 리뷰가 있습니다."),
 
     // 500
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "S500", "서버 내부 오류가 발생했습니다.");

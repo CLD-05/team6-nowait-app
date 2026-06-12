@@ -20,9 +20,6 @@ public class RestaurantDetailResponse {
 	private String description;
 	private String imageUrl;
 	private String mainMenuName;
-	private LocalTime openTime;
-	private LocalTime closeTime;
-	private String closedDays;
 	private String parkingAvailable;
 	private String wifiAvailable;
 	private String multilingualMenuAvailable;
@@ -37,9 +34,6 @@ public class RestaurantDetailResponse {
 				restaurant.getDescription(),
 				restaurant.getImageUrl(),
 				restaurant.getMainMenuName(),
-				restaurant.getOpenTime(),
-				restaurant.getCloseTime(),
-				restaurant.getClosedDays(),
 				restaurant.getParkingAvailable(),
 				restaurant.getWifiAvailable(),
 				restaurant.getMultilingualMenuAvailable()

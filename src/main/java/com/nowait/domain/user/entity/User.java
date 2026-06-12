@@ -1,6 +1,6 @@
 package com.nowait.domain.user.entity;
 
-import org.springframework.data.annotation.Id;
+import jakarta.persistence.Id;
 
 import com.nowait.domain.user.type.UserRole;
 import com.nowait.global.common.BaseTimeEntity;
@@ -21,24 +21,37 @@ import lombok.NoArgsConstructor;
 @Table(name = "users")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class User extends BaseTimeEntity{
-	
+public class User extends BaseTimeEntity {
+
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
-	
+
 	@Column(nullable = false, unique = true, length = 100)
 	private String email;
-	
+
 	@Column(nullable = false, length = 255)
 	private String password;
-	
+
 	@Column(nullable = false, length = 50)
 	private String name;
-	
+
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false)
 	private UserRole role;
+	
+	@Column(name = "is_deleted", nullable = false, columnDefinition = "CHAR(1) DEFAULT 'N'")
+	private String isDeleted = "N";
+	
+	public void withdrawUser() {
+	    this.isDeleted = "Y";
+	}
+
+	public void updateProfile(String name) {
+		if (name != null && !name.trim().isEmpty()) {
+			this.name = name;
+		}
+	}
 	
 	@Builder
 	public User(String email, String password, String name, UserRole role) {
@@ -46,11 +59,5 @@ public class User extends BaseTimeEntity{
 		this.password = password;
 		this.name = name;
 		this.role = role;
-	}
-	
-	public void updateProfile(String name) {
-		if (name != null && !name.trim().isEmpty()) {
-			this.name = name;
-		}
 	}
 }

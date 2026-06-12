@@ -32,19 +32,19 @@ public class WaitingController {
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
-  /* 사용자: 내 웨이팅 조회 */
+  /* 사용자: 내 활성 웨이팅 목록 조회 (여러 식당 동시 등록 가능) */
   @GetMapping("/api/waitings/me")
-  public ResponseEntity<WaitingResponse> getMyWaiting(
+  public ResponseEntity<List<WaitingResponse>> getMyWaitings(
       @AuthenticationPrincipal CustomUserDetails principal) {
-    return ResponseEntity.ok(waitingService.getMyWaiting(principal.getUserId()));
+    return ResponseEntity.ok(waitingService.getMyWaitings(principal.getUserId()));
   }
 
-  /* 사용자: 내 웨이팅 취소 */
-  @PatchMapping("/api/waitings/{waitingId}/cancel")
+  /* 사용자: 내 웨이팅 취소 (토큰 기반) */
+  @PatchMapping("/api/waitings/{token}/cancel")
   public ResponseEntity<WaitingResponse> cancelMyWaiting(
-      @PathVariable Long waitingId,
+      @PathVariable String token,
       @AuthenticationPrincipal CustomUserDetails principal) {
-    return ResponseEntity.ok(waitingService.cancelByUser(waitingId, principal.getUserId()));
+    return ResponseEntity.ok(waitingService.cancelByUser(token, principal.getUserId()));
   }
 
   /* 점주: 식당의 웨이팅 목록 조회 */
@@ -56,39 +56,42 @@ public class WaitingController {
     return ResponseEntity.ok(waitingService.getOwnerWaitings(restaurantId, principal.getUserId()));
   }
 
-  /* 점주: 호출 */
-  @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting/{waitingId}/call")
-  public ResponseEntity<WaitingResponse> call(
-      @PathVariable Long waitingId,
-      @AuthenticationPrincipal CustomUserDetails principal) {
-    return ResponseEntity.ok(waitingService.call(waitingId, principal.getUserId()));
-  }
+  /* 점주: 호출 (토큰 기반) */
+@PreAuthorize("hasRole('OWNER')")
+@PatchMapping(value = {
+    "/api/owners/waiting/{token}/call",
+    "/api/owners/waiting/{token}/recall"
+})
+public ResponseEntity<WaitingResponse> call(
+    @PathVariable String token,
+    @AuthenticationPrincipal CustomUserDetails principal) {
+  return ResponseEntity.ok(waitingService.call(token, principal.getUserId()));
+}
 
-  /* 점주: 취소 처리 */
+  /* 점주: 취소 처리 (토큰 기반) */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting/{waitingId}/cancelled")
+  @PatchMapping("/api/owners/waiting/{token}/cancelled")
   public ResponseEntity<WaitingResponse> cancelByOwner(
-      @PathVariable Long waitingId,
+      @PathVariable String token,
       @AuthenticationPrincipal CustomUserDetails principal) {
-    return ResponseEntity.ok(waitingService.cancelByOwner(waitingId, principal.getUserId()));
+    return ResponseEntity.ok(waitingService.cancelByOwner(token, principal.getUserId()));
   }
 
-  /* 점주: 입장 처리 (enter) */
+  /* 점주: 입장 처리 (토큰 기반) */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting/{waitingId}/enter")
+  @PatchMapping("/api/owners/waiting/{token}/enter")
   public ResponseEntity<WaitingResponse> enter(
-      @PathVariable Long waitingId,
+      @PathVariable String token,
       @AuthenticationPrincipal CustomUserDetails principal) {
-    return ResponseEntity.ok(waitingService.markEntered(waitingId, principal.getUserId()));
+    return ResponseEntity.ok(waitingService.markEntered(token, principal.getUserId()));
   }
 
-  /* 점주: 입장 완료 처리 (entered) — 현재 enter와 동일 동작 */
+  /* 점주: 입장 완료 처리 (현재 enter 와 동일 동작) */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting/{waitingId}/entered")
+  @PatchMapping("/api/owners/waiting/{token}/entered")
   public ResponseEntity<WaitingResponse> entered(
-      @PathVariable Long waitingId,
+      @PathVariable String token,
       @AuthenticationPrincipal CustomUserDetails principal) {
-    return ResponseEntity.ok(waitingService.markEntered(waitingId, principal.getUserId()));
+    return ResponseEntity.ok(waitingService.markEntered(token, principal.getUserId()));
   }
 }

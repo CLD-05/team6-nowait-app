@@ -33,6 +33,13 @@ public class RestaurantOwner {
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private LocalDateTime createdAt;
 	
+	@Column(name = "is_deleted", nullable = false, columnDefinition = "CHAR(1) DEFAULT 'N'")
+	private String isDeleted = "N";
+	
+	public void withdrawOwner() {
+	    this.isDeleted = "Y";
+	}
+	
 	@Builder
 	public RestaurantOwner(Long userId, Long restaurantId) {
 		this.userId = userId;
