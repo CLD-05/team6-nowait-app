@@ -1,7 +1,12 @@
 package com.nowait.domain.restaurant.service;
 
+import java.time.LocalTime;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
+
+import com.nowait.domain.restaurant.type.DayOfWeek;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +21,7 @@ import com.nowait.domain.restaurant.entity.RestaurantHour;
 import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
 import com.nowait.domain.restaurant.type.RestaurantCategory;
+import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
@@ -31,29 +37,45 @@ public class RestaurantService {
 	
 	@Transactional
     public Long registerRestaurant(RestaurantRegisterRequest request, Long ownerId) {
+		if (restaurantRepository.existsByOwnerIdAndIsDeleted(ownerId, "N")) {
+			throw new BusinessException(ErrorCode.OWNER_ALREADY_EXISTS);
+		}
+
         // 1. 기존 로직: 식당 정보를 먼저 저장합니다.
         Restaurant restaurant = request.toEntity(ownerId);
         Restaurant savedRestaurant = restaurantRepository.save(restaurant);
 
-        // 식당이 등록될 때 월~일요일 기본 영업시간 7줄을 자동으로 깔아줍니다!
-        for (RestaurantHourRequest hourReq : request.getRestaurantHours()) {
-        	
-        	// 💡 정기 휴무('Y')인 요일은 시간이 누락될 수 있으므로, 안전하게 00:00(MIDNIGHT)으로 메워주는 방어 코드
+        // 요청에 포함된 영업시간 저장
+        List<RestaurantHourRequest> hourRequests = request.getRestaurantHours() == null
+            ? List.of() : request.getRestaurantHours();
+
+        Set<DayOfWeek> providedDays = hourRequests.stream()
+            .map(RestaurantHourRequest::getDayOfWeek)
+            .collect(Collectors.toSet());
+
+        for (RestaurantHourRequest hourReq : hourRequests) {
             boolean isHoliday = "Y".equals(hourReq.getIsRegularHoliday());
-            java.time.LocalTime finalOpenTime = isHoliday ? java.time.LocalTime.MIDNIGHT : hourReq.getOpenTime();
-            java.time.LocalTime finalCloseTime = isHoliday ? java.time.LocalTime.MIDNIGHT : hourReq.getCloseTime();
-            
-         // 2. 요일별 테이블(RestaurantHour)에 연관 관계를 맺어 챡챡 쌓아줍니다.
-            RestaurantHour restaurantHour = RestaurantHour.builder()
-                .restaurant(savedRestaurant)                    // 위에서 방금 영속화된 식당 엔티티
-                .dayOfWeek(hourReq.getDayOfWeek())              // 프론트가 보낸 요일 (MON, TUE 등)
-                .openTime(finalOpenTime)                        // 가공 완료된 오픈 시간
-                .closeTime(finalCloseTime)                      // 가공 완료된 마감 시간
-                .isRegularHoliday(hourReq.getIsRegularHoliday())// 정기 휴무 여부 ('Y' 또는 'N')
-                .build();
-            
-            restaurantHourRepository.save(restaurantHour); // 요일별 테이블에 한 줄씩 인서트!
+            LocalTime finalOpenTime = isHoliday ? LocalTime.MIDNIGHT : hourReq.getOpenTime();
+            LocalTime finalCloseTime = isHoliday ? LocalTime.MIDNIGHT : hourReq.getCloseTime();
+            restaurantHourRepository.save(RestaurantHour.builder()
+                .restaurant(savedRestaurant)
+                .dayOfWeek(hourReq.getDayOfWeek())
+                .openTime(finalOpenTime)
+                .closeTime(finalCloseTime)
+                .isRegularHoliday(hourReq.getIsRegularHoliday())
+                .build());
         }
+
+        // 누락된 요일은 기본값(11:00~22:00, 정기휴무 없음)으로 자동 생성
+        Arrays.stream(DayOfWeek.values())
+            .filter(day -> !providedDays.contains(day))
+            .forEach(day -> restaurantHourRepository.save(RestaurantHour.builder()
+                .restaurant(savedRestaurant)
+                .dayOfWeek(day)
+                .openTime(LocalTime.of(11, 0))
+                .closeTime(LocalTime.of(22, 0))
+                .isRegularHoliday("N")
+                .build()));
 
         return savedRestaurant.getId();
     }
@@ -81,17 +103,39 @@ public class RestaurantService {
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
 		return RestaurantDetailResponse.from(restaurant);
 	}
+
+	public RestaurantDetailResponse getMyRestaurant(Long ownerId) {
+		Restaurant restaurant = restaurantRepository.findFirstByOwnerIdAndIsDeleted(ownerId, "N")
+				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+		return RestaurantDetailResponse.from(restaurant);
+	}
 	
 	@Transactional
-	public void updateRestaurant(Long restaurantId, RestaurantUpdateRequest request, Long owenrId) {
+	public void updateRestaurant(Long restaurantId, RestaurantUpdateRequest request, Long ownerId) {
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
 		
-		if (!restaurant.getOwnerId().equals(owenrId)) {
+		if (!restaurant.getOwnerId().equals(ownerId)) {
 			throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
 		}
+
+		restaurant.updateDetails(
+				request.getName(), request.getCategory(), request.getAddress(), request.getPhoneNumber(),
+				request.getDescription(), request.getImageUrl(), request.getMainMenuName(),
+				request.getParkingAvailable(), request.getWifiAvailable(), request.getMultilingualMenuAvailable(),
+				request.getStatus(), request.getReservationAvailable(), request.getWaitingAvailable());
 	}
 	
+	@Transactional
+	public void updateStatus(Long restaurantId, RestaurantStatus status, Long ownerId) {
+		Restaurant restaurant = restaurantRepository.findById(restaurantId)
+				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+		if (!restaurant.getOwnerId().equals(ownerId)) {
+			throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
+		}
+		restaurant.updateStatus(status);
+	}
+
 	@Transactional
 	public void deleteRestaurant(Long restaurantId, Long ownerId) {
 		
@@ -121,6 +165,14 @@ public class RestaurantService {
         restaurant.updateImage(imageUrl);
     }
 	
+    public void verifyOwner(Long restaurantId, Long ownerId) {
+        Restaurant restaurant = restaurantRepository.findById(restaurantId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+        if (!restaurant.getOwnerId().equals(ownerId)) {
+            throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
+        }
+    }
+
 	@Transactional
     public void deleteRestaurantImage(Long restaurantId, Long ownerId) {
         Restaurant restaurant = restaurantRepository.findById(restaurantId)

@@ -20,17 +20,18 @@ public class ReviewController {
     private final ReviewService reviewService;
 
     /**
-     * POST /api/reservations/{reservationId}/reviews
+     * POST /api/v1/reservations/{reservationToken}/reviews
      * 리뷰 작성 (인증 필요, 방문 완료 상태에서만 가능)
+     * reservationToken(UUID) 기반 — DB sync 전에도 작성 가능
      */
-    @PostMapping("/api/reservations/{reservationId}/reviews")
+    @PostMapping("/api/v1/reservations/{reservationToken}/reviews")
     public ResponseEntity<ReviewResponse> createReview(
         @AuthenticationPrincipal CustomUserDetails userDetails,
-        @PathVariable Long reservationId,
+        @PathVariable String reservationToken,
         @Valid @RequestBody ReviewCreateRequest request
     ) {
         ReviewResponse response = reviewService.createReview(
-            userDetails.getUserId(), reservationId, request
+            userDetails.getUserId(), reservationToken, request
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -39,7 +40,7 @@ public class ReviewController {
      * GET /api/restaurants/{restaurantId}/reviews
      * 식당 리뷰 목록 (공개)
      */
-    @GetMapping("/api/restaurants/{restaurantId}/reviews")
+    @GetMapping("/api/v1/restaurants/{restaurantId}/reviews")
     public ResponseEntity<List<ReviewResponse>> getRestaurantReviews(
         @PathVariable Long restaurantId
     ) {
@@ -50,7 +51,7 @@ public class ReviewController {
      * GET /api/users/me/reviews
      * 내 리뷰 목록 (인증 필요)
      */
-    @GetMapping("/api/users/me/reviews")
+    @GetMapping("/api/v1/users/me/reviews")
     public ResponseEntity<List<ReviewResponse>> getMyReviews(
         @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
@@ -61,7 +62,7 @@ public class ReviewController {
      * PATCH /api/reviews/{reviewId}
      * 리뷰 수정 (본인만)
      */
-    @PatchMapping("/api/reviews/{reviewId}")
+    @PatchMapping("/api/v1/reviews/{reviewId}")
     public ResponseEntity<ReviewResponse> updateReview(
         @AuthenticationPrincipal CustomUserDetails userDetails,
         @PathVariable Long reviewId,
@@ -77,7 +78,7 @@ public class ReviewController {
      * DELETE /api/reviews/{reviewId}
      * 리뷰 삭제 (본인만)
      */
-    @DeleteMapping("/api/reviews/{reviewId}")
+    @DeleteMapping("/api/v1/reviews/{reviewId}")
     public ResponseEntity<Void> deleteReview(
         @AuthenticationPrincipal CustomUserDetails userDetails,
         @PathVariable Long reviewId

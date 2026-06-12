@@ -2,6 +2,7 @@ package com.nowait.domain.waiting.service;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -10,7 +11,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.nowait.domain.notification.service.NotificationService;
 import com.nowait.domain.notification.type.NotificationType;
-import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.entity.RestaurantHour;
 import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
@@ -55,7 +55,6 @@ public class WaitingService {
   private static final int NEAR_CALL_THRESHOLD = 5;
   
   private final WaitingSessionService waitingSessionService;
-  private final RestaurantOwnerRepository restaurantOwnerRepository;
   private final RestaurantRepository restaurantRepository;
   private final WaitingRepository waitingRepository;
   private final WaitingCallLogRepository waitingCallLogRepository;
@@ -127,24 +126,66 @@ public class WaitingService {
     notifyNearCallIfThreshold(session.getId());
 
     WaitingTokenData data = waitingRedis.findByToken(result.token());
+    if (data == null) {
+      log.error("Waiting hash missing from Redis immediately after registration. token={}", result.token());
+      throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
+    }
     return WaitingResponse.of(result.token(), data, 0L);
+  }
+
+  /*
+   * 사용자: 내 웨이팅 전체 이력 조회 (활성 + DB 저장분)
+   * GET /api/v1/waitings/me/history
+   *
+   * 활성 웨이팅(Redis)을 맨 앞에 두고, Worker 가 DB 에 sync 한 이력을 뒤에 붙인다.
+   * Worker 가 꺼져 있으면 DB 부분은 비어 있을 수 있다.
+   */
+  public List<WaitingResponse> getMyWaitingHistory(Long loginUserId) {
+    List<String> activeTokens = waitingRedis.findActiveTokensOf(loginUserId);
+    List<WaitingResponse> result = new ArrayList<>();
+
+    // 현재 Redis 에 있는 활성 웨이팅 (있으면 맨 앞에)
+    if (activeTokens != null && !activeTokens.isEmpty()) {
+        List<WaitingResponse> activeResponses = activeTokens.stream()
+            .map(token -> {
+                WaitingTokenData data = waitingRedis.findByToken(token); // 🔴 String 타입 호환 완벽!
+                if (data == null) return null;
+                long ahead = waitingRedis.aheadCount(data.sessionId(), token); // 🔴 String 타입 호환 완벽!
+                return WaitingResponse.of(token, data, ahead);
+            })
+            .filter(Objects::nonNull)
+            .toList();
+        
+        result.addAll(activeResponses); // 활성 웨이팅을 맨 앞에 추가
+    }
+
+    // DB 이력 (Worker sync 분) — 활성 토큰과 중복 제거
+    waitingRepository.findByUserIdOrderByRegisteredAtDesc(loginUserId)
+        .stream()
+        .filter(w -> activeTokens == null || !activeTokens.equals(w.getWaitingToken()))
+        .map(WaitingResponse::from)
+        .forEach(result::add);
+
+    return result;
   }
 
   /*
    * 사용자: 내 활성 웨이팅 조회
    * GET /api/waitings/me
    */
-  public WaitingResponse getMyWaiting(Long loginUserId) {
-    String token = waitingRedis.findActiveTokenOf(loginUserId);
-    if (token == null) {
-      throw new BusinessException(ErrorCode.WAITING_NOT_FOUND);
-    }
-    WaitingTokenData data = waitingRedis.findByToken(token);
-    if (data == null) {
-      throw new BusinessException(ErrorCode.WAITING_NOT_FOUND);
-    }
-    long ahead = waitingRedis.aheadCount(data.sessionId(), token);
-    return WaitingResponse.of(token, data, ahead);
+  public List<WaitingResponse> getMyWaitings(Long loginUserId) {
+    List<String> tokens = waitingRedis.findActiveTokensOf(loginUserId);
+    if (tokens.isEmpty()) return List.of();
+
+    return tokens.stream()
+        .map(token -> {
+          WaitingTokenData data = waitingRedis.findByToken(token);
+          if (data == null) return null;
+          long ahead = waitingRedis.aheadCount(data.sessionId(), token);
+          return WaitingResponse.of(token, data, ahead);
+        })
+        .filter(Objects::nonNull)
+        .toList();
   }
 
   /*
@@ -155,7 +196,7 @@ public class WaitingService {
   public WaitingResponse cancelByUser(String token, Long loginUserId) {
     WaitingTokenData data = findTokenDataOrThrow(token);
 
-    waitingRedis.cancel(token, loginUserId, data.sessionId());
+    waitingRedis.cancel(token, loginUserId, data.sessionId(), data.restaurantId());
     log.info("Waiting cancelled by user. token={}, userId={}", token, loginUserId);
 
     notifyNearCallIfThreshold(data.sessionId());
@@ -173,7 +214,13 @@ public class WaitingService {
   public List<WaitingResponse> getOwnerWaitings(Long restaurantId, Long loginUserId) {
     verifyOwnership(restaurantId, loginUserId);
 
-    Long sessionId = findTodaySessionId(restaurantId);
+    // 오늘 세션이 없으면 빈 목록 반환 (세션 미오픈 상태)
+    Long sessionId;
+    try {
+      sessionId = findTodaySessionId(restaurantId);
+    } catch (BusinessException e) {
+      return List.of();
+    }
     List<String> tokens = waitingRedis.listActiveTokens(sessionId);
 
     return tokens.stream()
@@ -233,7 +280,7 @@ public class WaitingService {
     WaitingTokenData data = findTokenDataOrThrow(token);
     verifyOwnership(data.restaurantId(), loginUserId);
 
-    waitingRedis.cancelByOwner(token, data.sessionId(), data.userId());
+    waitingRedis.cancelByOwner(token, data.sessionId(), data.userId(), data.restaurantId());
     log.info("Waiting cancelled by owner. token={}", token);
 
     notifyNearCallIfThreshold(data.sessionId());
@@ -252,7 +299,7 @@ public class WaitingService {
     WaitingTokenData data = findTokenDataOrThrow(token);
     verifyOwnership(data.restaurantId(), loginUserId);
 
-    waitingRedis.enter(token, data.sessionId(), data.userId());
+    waitingRedis.enter(token, data.sessionId(), data.userId(), data.restaurantId());
     log.info("Waiting entered. token={}", token);
 
     notifyNearCallIfThreshold(data.sessionId());
@@ -276,7 +323,9 @@ public class WaitingService {
   }
 
   private void verifyOwnership(Long restaurantId, Long loginUserId) {
-    if (!restaurantOwnerRepository.existsByUserIdAndRestaurantId(loginUserId, restaurantId)) {
+    Restaurant restaurant = restaurantRepository.findById(restaurantId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+    if (!loginUserId.equals(restaurant.getOwnerId())) {
       throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
     }
   }

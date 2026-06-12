@@ -22,7 +22,7 @@ if status == 'ENTERED' or status == 'CANCELLED' then
   return { 0, 'ALREADY_PROCESSED' }
 end
 
-redis.call('HSET', KEYS[1], 'status', 'CANCELLED', 'canceledAt', ARGV[2])
+redis.call('HMSET', KEYS[1], 'status', 'CANCELLED', 'canceledAt', ARGV[2])
 redis.call('ZREM', KEYS[2], ARGV[1])
 
 local newCount = redis.call('DECR', KEYS[3])

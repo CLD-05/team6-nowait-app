@@ -1,5 +1,6 @@
 package com.nowait.global.security.jwt;
 
+import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.domain.user.type.UserRole;
 import com.nowait.global.security.principal.CustomUserDetails;
 import jakarta.servlet.FilterChain;
@@ -23,6 +24,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String PREFIX = "Bearer ";
 
     private final JwtTokenProvider tokenProvider;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -35,12 +37,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String email = tokenProvider.getEmail(token);
             UserRole role = tokenProvider.getRole(token);
 
-            CustomUserDetails principal = CustomUserDetails.fromToken(userId, email, role);
+            // 탈퇴한 계정은 기존 토큰으로도 인증 거부
+            boolean withdrawn = userRepository.findById(userId)
+                    .map(u -> "Y".equals(u.getIsDeleted()))
+                    .orElse(true);
 
-            UsernamePasswordAuthenticationToken auth =
-                    new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
-
-            SecurityContextHolder.getContext().setAuthentication(auth);
+            if (!withdrawn) {
+                CustomUserDetails principal = CustomUserDetails.fromToken(userId, email, role);
+                UsernamePasswordAuthenticationToken auth =
+                        new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+                SecurityContextHolder.getContext().setAuthentication(auth);
+            }
         }
 
         chain.doFilter(request, response);

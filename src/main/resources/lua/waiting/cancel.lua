@@ -29,7 +29,7 @@ if status == 'ENTERED' or status == 'CANCELLED' then
 end
 
 -- 상태 전이
-redis.call('HSET', KEYS[1], 'status', 'CANCELLED', 'canceledAt', ARGV[3])
+redis.call('HMSET', KEYS[1], 'status', 'CANCELLED', 'canceledAt', ARGV[3])
 
 -- Sorted Set 에서 제거 → 뒷 사람들 자동으로 한 칸씩 당겨짐
 redis.call('ZREM', KEYS[2], ARGV[1])

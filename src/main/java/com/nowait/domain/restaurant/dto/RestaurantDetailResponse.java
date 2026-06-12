@@ -4,6 +4,7 @@ import java.time.LocalTime;
 
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.type.RestaurantCategory;
+import com.nowait.domain.restaurant.type.RestaurantStatus;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -23,6 +24,9 @@ public class RestaurantDetailResponse {
 	private String parkingAvailable;
 	private String wifiAvailable;
 	private String multilingualMenuAvailable;
+	private RestaurantStatus status;
+	private String reservationAvailable;
+	private String waitingAvailable;
 	
 	public static RestaurantDetailResponse from(Restaurant restaurant) {
 		return new RestaurantDetailResponse(
@@ -36,7 +40,10 @@ public class RestaurantDetailResponse {
 				restaurant.getMainMenuName(),
 				restaurant.getParkingAvailable(),
 				restaurant.getWifiAvailable(),
-				restaurant.getMultilingualMenuAvailable()
+				restaurant.getMultilingualMenuAvailable(),
+				restaurant.getStatus(),
+				restaurant.getReservationAvailable(),
+				restaurant.getWaitingAvailable()
 				);
 		
 	}

@@ -1,6 +1,7 @@
 package com.nowait.domain.waiting.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.nowait.domain.waiting.entity.Waiting;
 import com.nowait.domain.waiting.redis.WaitingTokenData;
 import com.nowait.domain.waiting.type.WaitingStatus;
 
@@ -48,6 +49,24 @@ public record WaitingResponse(
 
   public static WaitingResponse of(String token, WaitingTokenData data) {
     return of(token, data, null);
+  }
+
+  /* DB 엔티티 → 응답 (마이페이지 이력 조회용) */
+  public static WaitingResponse from(Waiting w) {
+    return new WaitingResponse(
+        w.getWaitingToken(),
+        w.getSessionId(),
+        w.getRestaurantId(),
+        w.getUserId(),
+        w.getWaitingNumber(),
+        w.getPartySize(),
+        w.getStatus(),
+        null,
+        w.getRegisteredAt(),
+        w.getCalledAt(),
+        w.getEnteredAt(),
+        w.getCanceledAt()
+    );
   }
 
   private static LocalDateTime toDateTime(long millis) {

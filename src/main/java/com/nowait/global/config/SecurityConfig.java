@@ -43,14 +43,15 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
-                                "/api/users/signup",
-                                "/api/users/signup/owner",
-                                "/api/users/login")
+                            "/api/v1/auth/signup",
+                            "/api/v1/auth/signup/owner",
+                            "/api/v1/auth/login")
                         .permitAll()
-                        .requestMatchers("/api/restaurants/**").permitAll()
-                        .requestMatchers("/api/restaurants/*/waiting-session").permitAll()
-                        /* SSE 스트림은 티켓으로 컨트롤러 내부에서 검증 → JWT 필터 우회 */
-                        .requestMatchers("/api/notifications/stream").permitAll()
+                		    .requestMatchers("/api/v1/restaurants/**").permitAll()
+                		    .requestMatchers("/api/v1/restaurants/*/waiting-session").permitAll()
+                		    .requestMatchers("/api/v1/restaurants/*/reviews").permitAll()  // 추가
+                		    .requestMatchers("/api/v1/notifications/stream").permitAll()
+                		    .requestMatchers("/images/**").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

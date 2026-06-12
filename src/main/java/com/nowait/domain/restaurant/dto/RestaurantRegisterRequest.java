@@ -39,6 +39,7 @@ public class RestaurantRegisterRequest {
 	
 	public Restaurant toEntity(Long ownerId) {
 		return Restaurant.builder()
+				.ownerId(ownerId)
 				.name(this.name)
 				.category(this.category)
 				.address(this.address)

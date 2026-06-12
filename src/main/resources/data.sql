@@ -1,0 +1,206 @@
+-- Restaurant seed data
+-- Source: restaurant_dataset.csv
+-- Use with Flyway as V2__insert_restaurant_seed_data.sql
+
+INSERT INTO restaurant (
+    restaurant_id,
+    restaurant_name,
+    category,
+    address,
+    phone_number,
+    description,
+    image_url,
+    main_menu_name,
+    open_time,
+    close_time,
+    closed_days,
+    parking_available,
+    wifi_available,
+    multilingual_menu_available
+) VALUES
+    (1, '도담국밥', 'KOREAN', '서울특별시 마포구 와우산로 8', '02-3037-1053', '진한 사골 육수와 푸짐한 고기 국밥이 인기인 한식 전문점입니다.', '/images/restaurants/001-hanwoo-sagol-gukbap.jpg', '한우사골국밥', '10:00:00', '21:00:00', '월요일', 'N', 'Y', 'N'),
+    (2, '온기정찬', 'KOREAN', '서울특별시 강남구 테헤란로 15', '02-3074-1106', '매콤한 제육볶음과 따뜻한 반찬 구성이 좋은 정찬집입니다.', '/images/restaurants/002-jeyuk-jeongsik.jpg', '제육정식', '11:00:00', '22:00:00', '화요일', 'Y', 'Y', 'N'),
+    (3, '한상마루', 'KOREAN', '서울특별시 종로구 삼일대로 22', '02-3111-1159', '부드러운 수육과 깔끔한 쌈채소를 함께 즐길 수 있는 한식당입니다.', '/images/restaurants/003-bossam-jeongsik.jpg', '보쌈정식', '11:30:00', '21:30:00', '수요일', 'N', 'N', 'N'),
+    (4, '청담비빔', 'KOREAN', '서울특별시 송파구 올림픽로 29', '02-3148-1212', '신선한 나물과 고소한 고추장이 어우러진 비빔밥 전문점입니다.', '/images/restaurants/004-jeonju-bibimbap.jpg', '전주비빔밥', '12:00:00', '22:00:00', '목요일', 'Y', 'Y', 'Y'),
+    (5, '솔밭갈비', 'KOREAN', '부산광역시 해운대구 해운대로 36', '051-285-1305', '숯불 향이 살아있는 달콤짭짤한 갈비가 대표 메뉴입니다.', '/images/restaurants/005-dwaeji-galbi.jpg', '돼지갈비', '09:00:00', '20:00:00', '일요일', 'N', 'Y', 'N'),
+    (6, '해온찜닭', 'KOREAN', '대구광역시 중구 동성로 43', '053-302-1366', '당면과 감자가 듬뿍 들어간 달콤한 간장찜닭 맛집입니다.', '/images/restaurants/006-ganjang-jjimdak.jpg', '간장찜닭', '10:30:00', '20:30:00', '연중무휴', 'Y', 'N', 'N'),
+    (7, '미담순두부', 'KOREAN', '광주광역시 동구 충장로 50', '062-319-1427', '칼칼한 국물과 부드러운 순두부가 어울리는 찌개 전문점입니다.', '/images/restaurants/007-haemul-sundubu-jjigae.jpg', '해물순두부찌개', '10:00:00', '21:00:00', '첫째·셋째 월요일', 'N', 'Y', 'N'),
+    (8, '가온칼국수', 'KOREAN', '대전광역시 서구 둔산로 57', '042-336-1488', '시원한 바지락 국물과 쫄깃한 면발이 특징인 칼국수집입니다.', '/images/restaurants/008-bajirak-kalguksu.jpg', '바지락칼국수', '11:00:00', '22:00:00', '매월 마지막 화요일', 'Y', 'Y', 'Y'),
+    (9, '담백한상', 'KOREAN', '인천광역시 연수구 송도과학로 64', '032-353-1549', '노릇하게 구운 생선과 다양한 반찬을 제공하는 한식 밥집입니다.', '/images/restaurants/009-godeungeo-gui-jeongsik.jpg', '고등어구이정식', '11:30:00', '21:30:00', '월요일', 'N', 'N', 'N'),
+    (10, '산들나물', 'KOREAN', '경기도 성남시 분당구 판교역로 71', '031-370-1610', '향긋한 산나물과 담백한 양념이 조화로운 건강식당입니다.', '/images/restaurants/010-sanchae-bibimbap.jpg', '산채비빔밥', '12:00:00', '22:00:00', '화요일', 'Y', 'Y', 'N'),
+    (11, '고향뚝배기', 'KOREAN', '서울특별시 마포구 와우산로 78', '02-3407-1583', '묵은지의 깊은 맛을 살린 김치찌개가 인기인 식당입니다.', '/images/restaurants/011-kimchi-jjigae.jpg', '김치찌개', '09:00:00', '20:00:00', '수요일', 'N', 'Y', 'N'),
+    (12, '명가불백', 'KOREAN', '서울특별시 강남구 테헤란로 85', '02-3444-1636', '달짝지근한 불고기와 든든한 백반 구성이 특징입니다.', '/images/restaurants/012-ganjang-bulgogi-baekban.jpg', '간장불고기백반', '10:30:00', '20:30:00', '목요일', 'Y', 'N', 'Y'),
+    (13, '초가삼계탕', 'KOREAN', '서울특별시 종로구 삼일대로 92', '02-3481-1689', '진한 한방 육수와 부드러운 닭고기를 제공하는 삼계탕집입니다.', '/images/restaurants/013-hanbang-samgyetang.jpg', '한방삼계탕', '10:00:00', '21:00:00', '일요일', 'N', 'Y', 'N'),
+    (14, '마루쌈밥', 'KOREAN', '서울특별시 송파구 올림픽로 99', '02-3518-1742', '구수한 우렁강된장과 신선한 쌈채소가 인기입니다.', '/images/restaurants/014-ureong-ssambap.jpg', '우렁쌈밥', '11:00:00', '22:00:00', '연중무휴', 'Y', 'Y', 'N'),
+    (15, '해담곰탕', 'KOREAN', '부산광역시 해운대구 해운대로 106', '051-455-1915', '맑고 깊은 국물의 곰탕을 전문으로 하는 한식당입니다.', '/images/restaurants/015-sogogi-gomtang.jpg', '소고기곰탕', '11:30:00', '21:30:00', '첫째·셋째 월요일', 'N', 'N', 'N'),
+    (16, '별미떡갈비', 'KOREAN', '대구광역시 중구 동성로 113', '053-472-1976', '육즙 가득한 수제 떡갈비와 정갈한 반찬을 제공합니다.', '/images/restaurants/016-suje-tteokgalbi.jpg', '수제떡갈비', '12:00:00', '22:00:00', '매월 마지막 화요일', 'Y', 'Y', 'Y'),
+    (17, '달빛전집', 'KOREAN', '광주광역시 동구 충장로 120', '062-489-2037', '바삭한 전과 막걸리 안주 구성이 좋은 전 전문점입니다.', '/images/restaurants/017-modum-jeon.jpg', '모둠전', '09:00:00', '20:00:00', '월요일', 'N', 'Y', 'N'),
+    (18, '정담한식', 'KOREAN', '대전광역시 서구 둔산로 127', '042-506-2098', '매콤한 양념과 부드러운 갈치살이 잘 어울리는 한식집입니다.', '/images/restaurants/018-galchi-jorim.jpg', '갈치조림', '10:30:00', '20:30:00', '화요일', 'Y', 'N', 'N'),
+    (19, '은하냉면', 'KOREAN', '인천광역시 연수구 송도과학로 134', '032-523-2159', '시원한 육수와 쫄깃한 면발이 인기인 냉면 전문점입니다.', '/images/restaurants/019-mul-naengmyeon.jpg', '물냉면', '10:00:00', '21:00:00', '수요일', 'N', 'Y', 'N'),
+    (20, '소담한끼', 'KOREAN', '경기도 성남시 분당구 판교역로 141', '031-540-2220', '구수한 된장찌개와 집밥 같은 반찬을 제공하는 식당입니다.', '/images/restaurants/020-doenjang-jjigae-jeongsik.jpg', '된장찌개정식', '11:00:00', '22:00:00', '목요일', 'Y', 'Y', 'Y'),
+    (21, '하루스시', 'JAPANESE', '서울특별시 마포구 와우산로 148', '02-3777-2113', '신선한 생선과 깔끔한 샤리가 어울리는 초밥 전문점입니다.', '/images/restaurants/021-modum-chobap.jpg', '모둠초밥', '11:30:00', '21:30:00', '일요일', 'N', 'N', 'N'),
+    (22, '멘야하루', 'JAPANESE', '서울특별시 강남구 테헤란로 155', '02-3814-2166', '진한 돼지뼈 육수와 차슈가 인기인 라멘집입니다.', '/images/restaurants/022-tonkotsu-ramen.jpg', '돈코츠라멘', '12:00:00', '22:00:00', '연중무휴', 'Y', 'Y', 'N'),
+    (23, '사쿠라돈', 'JAPANESE', '서울특별시 종로구 삼일대로 162', '02-3851-2219', '바삭한 돈카츠와 달걀소스가 올라간 일본식 덮밥집입니다.', '/images/restaurants/023-katsudon.jpg', '가츠동', '09:00:00', '20:00:00', '첫째·셋째 월요일', 'N', 'Y', 'N'),
+    (24, '오니기리온', 'JAPANESE', '서울특별시 송파구 올림픽로 169', '02-3888-2272', '간단하지만 든든한 일본식 주먹밥을 제공하는 매장입니다.', '/images/restaurants/024-salmon-onigiri.jpg', '연어오니기리', '10:30:00', '20:30:00', '매월 마지막 화요일', 'Y', 'N', 'Y'),
+    (25, '긴자카레', 'JAPANESE', '부산광역시 해운대구 해운대로 176', '051-625-2525', '진한 루와 부드러운 고기가 어울리는 일본식 카레 전문점입니다.', '/images/restaurants/025-beef-curry.jpg', '비프카레', '10:00:00', '21:00:00', '월요일', 'N', 'Y', 'N'),
+    (26, '유메우동', 'JAPANESE', '대구광역시 중구 동성로 183', '053-642-2586', '따뜻한 국물과 부드러운 고기 토핑이 특징인 우동집입니다.', '/images/restaurants/026-niku-udon.jpg', '니꾸우동', '11:00:00', '22:00:00', '화요일', 'Y', 'Y', 'N'),
+    (27, '토리야키', 'JAPANESE', '광주광역시 동구 충장로 190', '062-659-2647', '숯불에 구운 닭꼬치와 가벼운 안주가 인기인 일식주점입니다.', '/images/restaurants/027-yakitori.jpg', '야키토리', '11:30:00', '21:30:00', '수요일', 'N', 'N', 'N'),
+    (28, '나미텐동', 'JAPANESE', '대전광역시 서구 둔산로 197', '042-676-2708', '바삭한 튀김과 달콤한 소스가 어우러진 텐동 전문점입니다.', '/images/restaurants/028-saeu-tendon.jpg', '새우텐동', '12:00:00', '22:00:00', '목요일', 'Y', 'Y', 'Y'),
+    (29, '스시노바', 'JAPANESE', '인천광역시 연수구 송도과학로 4', '032-693-2769', '두툼한 연어와 부드러운 식감이 인기인 초밥집입니다.', '/images/restaurants/029-salmon-chobap.jpg', '연어초밥', '09:00:00', '20:00:00', '일요일', 'N', 'Y', 'N'),
+    (30, '카츠정', 'JAPANESE', '경기도 성남시 분당구 판교역로 11', '031-710-2830', '두툼하고 바삭한 로스카츠를 제공하는 돈카츠 전문점입니다.', '/images/restaurants/030-rosu-katsu.jpg', '로스카츠', '10:30:00', '20:30:00', '연중무휴', 'Y', 'N', 'N'),
+    (31, '아오이라멘', 'JAPANESE', '서울특별시 마포구 와우산로 18', '02-4147-2643', '구수한 미소 육수와 쫄깃한 면발이 특징입니다.', '/images/restaurants/031-miso-ramen.jpg', '미소라멘', '10:00:00', '21:00:00', '첫째·셋째 월요일', 'N', 'Y', 'N'),
+    (32, '도쿄벤토', 'JAPANESE', '서울특별시 강남구 테헤란로 25', '02-4184-2696', '간편하게 즐기는 일본식 도시락 전문점입니다.', '/images/restaurants/032-gyudon-bento.jpg', '규동벤토', '11:00:00', '22:00:00', '매월 마지막 화요일', 'Y', 'Y', 'Y'),
+    (33, '우미사케', 'JAPANESE', '서울특별시 종로구 삼일대로 32', '02-4221-2749', '신선한 사시미와 조용한 분위기를 제공하는 일식당입니다.', '/images/restaurants/033-sashimi-modum.jpg', '사시미모둠', '11:30:00', '21:30:00', '월요일', 'N', 'N', 'N'),
+    (34, '교토소바', 'JAPANESE', '서울특별시 송파구 올림픽로 39', '02-4258-2802', '차갑고 담백한 소바와 깔끔한 쯔유가 인기입니다.', '/images/restaurants/034-zaru-soba.jpg', '자루소바', '12:00:00', '22:00:00', '화요일', 'Y', 'Y', 'N'),
+    (35, '이치방덮밥', 'JAPANESE', '부산광역시 해운대구 해운대로 46', '051-795-3135', '달콤한 소스를 바른 장어덮밥을 제공하는 전문점입니다.', '/images/restaurants/035-jangeo-deopbap.jpg', '장어덮밥', '09:00:00', '20:00:00', '수요일', 'N', 'Y', 'N'),
+    (36, '카이센야', 'JAPANESE', '대구광역시 중구 동성로 53', '053-812-3196', '다양한 해산물이 올라간 신선한 해산물 덮밥집입니다.', '/images/restaurants/036-kaisendon.jpg', '카이센동', '10:30:00', '20:30:00', '목요일', 'Y', 'N', 'Y'),
+    (37, '모모야', 'JAPANESE', '광주광역시 동구 충장로 60', '062-829-3257', '철판에서 구워내는 오코노미야키가 대표 메뉴입니다.', '/images/restaurants/037-okonomiyaki.jpg', '오코노미야키', '10:00:00', '21:00:00', '일요일', 'N', 'Y', 'N'),
+    (38, '텐푸라소라', 'JAPANESE', '대전광역시 서구 둔산로 67', '042-846-3318', '가볍고 바삭한 일본식 튀김을 즐길 수 있는 매장입니다.', '/images/restaurants/038-modum-twigim.jpg', '모둠튀김', '11:00:00', '22:00:00', '연중무휴', 'Y', 'Y', 'N'),
+    (39, '스키야키온', 'JAPANESE', '인천광역시 연수구 송도과학로 74', '032-863-3379', '달콤한 간장 육수에 고기와 채소를 익혀 먹는 일식당입니다.', '/images/restaurants/039-sukiyaki.jpg', '스키야키', '11:30:00', '21:30:00', '첫째·셋째 월요일', 'N', 'N', 'N'),
+    (40, '라멘쿠모', 'JAPANESE', '경기도 성남시 분당구 판교역로 81', '031-880-3440', '담백하고 깔끔한 소금 육수 라멘이 인기입니다.', '/images/restaurants/040-shio-ramen.jpg', '시오라멘', '12:00:00', '22:00:00', '매월 마지막 화요일', 'Y', 'Y', 'Y'),
+    (41, '홍룡반점', 'CHINESE', '서울특별시 마포구 와우산로 88', '02-4517-3173', '춘장의 깊은 맛과 탱글한 면발이 특징인 중식당입니다.', '/images/restaurants/041-jjajangmyeon.jpg', '짜장면', '09:00:00', '20:00:00', '월요일', 'N', 'Y', 'N'),
+    (42, '금문각', 'CHINESE', '서울특별시 강남구 테헤란로 95', '02-4554-3226', '해산물이 듬뿍 들어간 얼큰한 짬뽕이 대표 메뉴입니다.', '/images/restaurants/042-jjamppong.jpg', '짬뽕', '10:30:00', '20:30:00', '화요일', 'Y', 'N', 'N'),
+    (43, '라이라이', 'CHINESE', '서울특별시 종로구 삼일대로 102', '02-4591-3279', '바삭한 튀김과 새콤달콤한 소스가 인기인 중식당입니다.', '/images/restaurants/043-tangsuyuk.jpg', '탕수육', '10:00:00', '21:00:00', '수요일', 'N', 'Y', 'N'),
+    (44, '마라향', 'CHINESE', '서울특별시 송파구 올림픽로 109', '02-4628-3332', '알싸한 마라 향과 다양한 토핑을 고를 수 있는 마라탕집입니다.', '/images/restaurants/044-maratang.jpg', '마라탕', '11:00:00', '22:00:00', '목요일', 'Y', 'Y', 'Y'),
+    (45, '천향루', 'CHINESE', '부산광역시 해운대구 해운대로 116', '051-265-3745', '쫀득하고 바삭한 꿔바로우를 제공하는 중식 맛집입니다.', '/images/restaurants/045-gguobarou.jpg', '꿔바로우', '11:30:00', '21:30:00', '일요일', 'N', 'N', 'N'),
+    (46, '소룡관', 'CHINESE', '대구광역시 중구 동성로 123', '053-282-3806', '육즙이 풍부한 샤오롱바오가 대표 메뉴인 딤섬집입니다.', '/images/restaurants/046-xiaolongbao.jpg', '샤오롱바오', '12:00:00', '22:00:00', '연중무휴', 'Y', 'Y', 'N'),
+    (47, '대륙반점', 'CHINESE', '광주광역시 동구 충장로 130', '062-299-3867', '고슬고슬한 밥알과 불향이 살아있는 볶음밥 전문점입니다.', '/images/restaurants/047-bokkeumbap.jpg', '볶음밥', '09:00:00', '20:00:00', '첫째·셋째 월요일', 'N', 'Y', 'N'),
+    (48, '동방미각', 'CHINESE', '대전광역시 서구 둔산로 137', '042-316-3928', '상큼한 소스와 바삭한 닭튀김이 어울리는 중식당입니다.', '/images/restaurants/048-yuringi.jpg', '유린기', '10:30:00', '20:30:00', '매월 마지막 화요일', 'Y', 'N', 'Y'),
+    (49, '차이나온', 'CHINESE', '인천광역시 연수구 송도과학로 144', '032-333-3989', '매콤한 마파두부를 든든하게 즐길 수 있는 매장입니다.', '/images/restaurants/049-mapa-dubu-bap.jpg', '마파두부밥', '10:00:00', '21:00:00', '월요일', 'N', 'Y', 'N'),
+    (50, '홍콩면가', 'CHINESE', '경기도 성남시 분당구 판교역로 151', '031-350-4050', '맑은 국물과 탱글한 완탕이 특징인 면 전문점입니다.', '/images/restaurants/050-wantangmyeon.jpg', '완탕면', '11:00:00', '22:00:00', '화요일', 'Y', 'Y', 'N'),
+    (51, '청운각', 'CHINESE', '서울특별시 마포구 와우산로 158', '02-4887-3703', '매콤한 고추잡채와 꽃빵 조합이 인기입니다.', '/images/restaurants/051-gochu-japchae.jpg', '고추잡채', '11:30:00', '21:30:00', '수요일', 'N', 'N', 'N'),
+    (52, '진미관', 'CHINESE', '서울특별시 강남구 테헤란로 165', '02-4924-3756', '다양한 재료와 겨자소스가 어울리는 중식 요리집입니다.', '/images/restaurants/052-yangjangpi.jpg', '양장피', '12:00:00', '22:00:00', '목요일', 'Y', 'Y', 'Y'),
+    (53, '상하이키친', 'CHINESE', '서울특별시 종로구 삼일대로 172', '02-4961-3809', '부드럽게 조린 돼지고기 동파육을 제공하는 중식당입니다.', '/images/restaurants/053-dongpayuk.jpg', '동파육', '09:00:00', '20:00:00', '일요일', 'N', 'Y', 'N'),
+    (54, '용궁반점', 'CHINESE', '서울특별시 송파구 올림픽로 179', '02-4998-3862', '푸짐한 해산물과 진한 짜장 소스가 특징입니다.', '/images/restaurants/054-haemul-jaengban-jjajang.jpg', '해물쟁반짜장', '10:30:00', '20:30:00', '연중무휴', 'Y', 'N', 'N'),
+    (55, '복래춘', 'CHINESE', '부산광역시 해운대구 해운대로 186', '051-435-4355', '매콤달콤한 소스의 깐풍기가 인기인 중식당입니다.', '/images/restaurants/055-kkanpunggi.jpg', '깐풍기', '10:00:00', '21:00:00', '첫째·셋째 월요일', 'N', 'Y', 'N'),
+    (56, '하오마라', 'CHINESE', '대구광역시 중구 동성로 193', '053-452-4416', '취향대로 고른 재료를 볶아내는 마라샹궈 전문점입니다.', '/images/restaurants/056-mara-xiangguo.jpg', '마라샹궈', '11:00:00', '22:00:00', '매월 마지막 화요일', 'Y', 'Y', 'Y'),
+    (57, '북경오리집', 'CHINESE', '광주광역시 동구 충장로 200', '062-469-4477', '바삭한 껍질과 부드러운 속살의 베이징덕을 제공합니다.', '/images/restaurants/057-beijing-duck.jpg', '베이징덕', '11:30:00', '21:30:00', '월요일', 'N', 'N', 'N'),
+    (58, '딤섬하우스', 'CHINESE', '대전광역시 서구 둔산로 7', '042-486-4538', '탱글한 새우가 들어간 하가우가 대표 메뉴입니다.', '/images/restaurants/058-hagau.jpg', '하가우', '12:00:00', '22:00:00', '화요일', 'Y', 'Y', 'N'),
+    (59, '만리향', 'CHINESE', '인천광역시 연수구 송도과학로 14', '032-503-4599', '차돌박이와 얼큰한 국물이 어울리는 짬뽕 맛집입니다.', '/images/restaurants/059-chadol-jjamppong.jpg', '차돌짬뽕', '09:00:00', '20:00:00', '수요일', 'N', 'Y', 'N'),
+    (60, '루위엔', 'CHINESE', '경기도 성남시 분당구 판교역로 21', '031-520-4660', '시원한 육수와 고소한 땅콩소스가 특징인 여름 메뉴입니다.', '/images/restaurants/060-junghwa-naengmyeon.jpg', '중화냉면', '10:30:00', '20:30:00', '목요일', 'Y', 'N', 'Y'),
+    (61, '오스테리아문', 'WESTERN', '서울특별시 마포구 와우산로 28', '02-5257-4233', '고소한 크림소스와 트러플 향이 어우러진 파스타집입니다.', '/images/restaurants/061-truffle-cream-pasta.jpg', '트러플크림파스타', '10:00:00', '21:00:00', '일요일', 'N', 'Y', 'N'),
+    (62, '스테이크하우스온', 'WESTERN', '서울특별시 강남구 테헤란로 35', '02-5294-4286', '육즙이 살아있는 스테이크를 제공하는 캐주얼 양식당입니다.', '/images/restaurants/062-chaekkeut-steak.jpg', '채끝스테이크', '11:00:00', '22:00:00', '연중무휴', 'Y', 'Y', 'N'),
+    (63, '피자노바', 'WESTERN', '서울특별시 종로구 삼일대로 42', '02-5331-4339', '토마토와 바질의 조합이 산뜻한 화덕피자 전문점입니다.', '/images/restaurants/063-margherita-pizza.jpg', '마르게리타피자', '11:30:00', '21:30:00', '첫째·셋째 월요일', 'N', 'N', 'N'),
+    (64, '브런치데이', 'WESTERN', '서울특별시 송파구 올림픽로 49', '02-5368-4392', '여유로운 분위기에서 브런치를 즐길 수 있는 매장입니다.', '/images/restaurants/064-eggs-benedict.jpg', '에그베네딕트', '12:00:00', '22:00:00', '매월 마지막 화요일', 'Y', 'Y', 'Y'),
+    (65, '파스타그로브', 'WESTERN', '부산광역시 해운대구 해운대로 56', '051-605-4965', '조개 육수의 감칠맛이 살아있는 파스타 전문점입니다.', '/images/restaurants/065-vongole-pasta.jpg', '봉골레파스타', '09:00:00', '20:00:00', '월요일', 'N', 'Y', 'N'),
+    (66, '버거스팟', 'WESTERN', '대구광역시 중구 동성로 63', '053-622-5026', '육즙 가득한 패티와 진한 치즈가 특징인 수제버거집입니다.', '/images/restaurants/066-suje-cheeseburger.jpg', '수제치즈버거', '10:30:00', '20:30:00', '화요일', 'Y', 'N', 'N'),
+    (67, '비스트로라움', 'WESTERN', '광주광역시 동구 충장로 70', '062-639-5087', '풍부한 라구소스와 치즈를 층층이 쌓은 라자냐가 인기입니다.', '/images/restaurants/067-lasagna.jpg', '라자냐', '10:00:00', '21:00:00', '수요일', 'N', 'Y', 'N'),
+    (68, '그릴앤와인', 'WESTERN', '대전광역시 서구 둔산로 77', '042-656-5148', '그릴 향이 좋은 립아이 스테이크를 제공하는 양식당입니다.', '/images/restaurants/068-ribeye-steak.jpg', '립아이 스테이크', '11:00:00', '22:00:00', '목요일', 'Y', 'Y', 'Y'),
+    (69, '샐러드포레', 'WESTERN', '인천광역시 연수구 송도과학로 84', '032-673-5209', '신선한 채소와 연어를 곁들인 건강한 샐러드 전문점입니다.', '/images/restaurants/069-salmon-salad.jpg', '연어샐러드', '11:30:00', '21:30:00', '일요일', 'N', 'N', 'N'),
+    (70, '리틀프렌치', 'WESTERN', '경기도 성남시 분당구 판교역로 91', '031-690-5270', '프렌치 감성의 가벼운 식사 메뉴를 즐길 수 있습니다.', '/images/restaurants/070-croque-monsieur.jpg', '크로크무슈', '12:00:00', '22:00:00', '연중무휴', 'Y', 'Y', 'N'),
+    (71, '파니니룸', 'WESTERN', '서울특별시 마포구 와우산로 98', '02-5627-4763', '바삭하게 구운 빵과 담백한 치킨이 어울리는 매장입니다.', '/images/restaurants/071-chicken-panini.jpg', '치킨파니니', '09:00:00', '20:00:00', '첫째·셋째 월요일', 'N', 'Y', 'N'),
+    (72, '플레이트어스', 'WESTERN', '서울특별시 강남구 테헤란로 105', '02-5664-4816', '부드러운 함박과 데미글라스 소스가 대표 메뉴입니다.', '/images/restaurants/072-hambak-steak.jpg', '함박스테이크', '10:30:00', '20:30:00', '매월 마지막 화요일', 'Y', 'N', 'Y'),
+    (73, '리조또바', 'WESTERN', '서울특별시 종로구 삼일대로 112', '02-5701-4869', '진한 버섯 향과 크리미한 식감이 특징인 리조또집입니다.', '/images/restaurants/073-mushroom-risotto.jpg', '버섯리조또', '10:00:00', '21:00:00', '월요일', 'N', 'Y', 'N'),
+    (74, '테라스키친', 'WESTERN', '서울특별시 송파구 올림픽로 119', '02-5738-4922', '부드러운 로제소스와 탱글한 면발이 인기입니다.', '/images/restaurants/074-rose-pasta.jpg', '로제파스타', '11:00:00', '22:00:00', '화요일', 'Y', 'Y', 'N'),
+    (75, '미트볼하우스', 'WESTERN', '부산광역시 해운대구 해운대로 126', '051-775-5575', '토마토소스에 졸인 미트볼과 파스타를 제공합니다.', '/images/restaurants/075-tomato-meatball.jpg', '토마토미트볼', '11:30:00', '21:30:00', '수요일', 'N', 'N', 'N'),
+    (76, '포크앤나이프', 'WESTERN', '대구광역시 중구 동성로 133', '053-792-5636', '부드럽게 구운 바비큐 폭립이 대표 메뉴입니다.', '/images/restaurants/076-pork-ribs.jpg', '폭립', '12:00:00', '22:00:00', '목요일', 'Y', 'Y', 'Y'),
+    (77, '베이글브런치', 'WESTERN', '광주광역시 동구 충장로 140', '062-809-5697', '쫄깃한 베이글과 크림치즈, 연어의 조합이 좋습니다.', '/images/restaurants/077-smoked-salmon-bagel.jpg', '훈제연어베이글', '09:00:00', '20:00:00', '일요일', 'N', 'Y', 'N'),
+    (78, '누벨키친', 'WESTERN', '대전광역시 서구 둔산로 147', '042-826-5758', '담백한 닭다리살 스테이크를 제공하는 캐주얼 식당입니다.', '/images/restaurants/078-chicken-steak.jpg', '치킨스테이크', '10:30:00', '20:30:00', '연중무휴', 'Y', 'N', 'N'),
+    (79, '어반파스타', 'WESTERN', '인천광역시 연수구 송도과학로 154', '032-843-5819', '마늘 향이 살아있는 깔끔한 오일 파스타 전문점입니다.', '/images/restaurants/079-aglio-e-olio.jpg', '알리오올리오', '10:00:00', '21:00:00', '첫째·셋째 월요일', 'N', 'Y', 'N'),
+    (80, '스프앤브레드', 'WESTERN', '경기도 성남시 분당구 판교역로 161', '031-860-5880', '따뜻한 수프와 빵을 함께 즐길 수 있는 양식 카페입니다.', '/images/restaurants/080-clam-chowder.jpg', '클램차우더', '11:00:00', '22:00:00', '매월 마지막 화요일', 'Y', 'Y', 'Y'),
+    (81, '사이공포', 'ASIAN', '서울특별시 마포구 와우산로 168', '02-5997-5293', '맑고 깊은 국물의 베트남 쌀국수를 제공하는 매장입니다.', '/images/restaurants/081-sogogi-ssalguksu.jpg', '소고기쌀국수', '11:30:00', '21:30:00', '월요일', 'N', 'N', 'N'),
+    (82, '타이마루', 'ASIAN', '서울특별시 강남구 테헤란로 175', '02-6034-5346', '새콤달콤한 소스와 쫄깃한 면이 어울리는 태국 음식점입니다.', '/images/restaurants/082-pad-thai.jpg', '팟타이', '12:00:00', '22:00:00', '화요일', 'Y', 'Y', 'N'),
+    (83, '하노이반미', 'ASIAN', '서울특별시 종로구 삼일대로 182', '02-6071-5399', '바삭한 바게트와 신선한 채소가 어울리는 반미 전문점입니다.', '/images/restaurants/083-bulgogi-banh-mi.jpg', '불고기반미', '09:00:00', '20:00:00', '수요일', 'N', 'Y', 'N'),
+    (84, '방콕커리', 'ASIAN', '서울특별시 송파구 올림픽로 189', '02-6108-5452', '코코넛 향이 진한 태국식 그린커리가 대표 메뉴입니다.', '/images/restaurants/084-green-curry.jpg', '그린커리', '10:30:00', '20:30:00', '목요일', 'Y', 'N', 'Y'),
+    (85, '발리키친', 'ASIAN', '부산광역시 해운대구 해운대로 196', '051-245-6185', '매콤한 볶음밥과 달걀이 어울리는 인도네시아 음식점입니다.', '/images/restaurants/085-nasi-goreng.jpg', '나시고렝', '10:00:00', '21:00:00', '일요일', 'N', 'Y', 'N'),
+    (86, '싱가포르테이블', 'ASIAN', '대구광역시 중구 동성로 3', '053-262-6246', '부드러운 닭고기와 향긋한 밥이 특징인 아시안 식당입니다.', '/images/restaurants/086-hainan-chicken-rice.jpg', '하이난치킨라이스', '11:00:00', '22:00:00', '연중무휴', 'Y', 'Y', 'N'),
+    (87, '카레인디아', 'ASIAN', '광주광역시 동구 충장로 10', '062-279-6307', '부드럽고 진한 인도식 커리와 난을 제공합니다.', '/images/restaurants/087-butter-chicken-curry.jpg', '버터치킨커리', '11:30:00', '21:30:00', '첫째·셋째 월요일', 'N', 'N', 'N'),
+    (88, '포레스트타이', 'ASIAN', '대전광역시 서구 둔산로 17', '042-296-6368', '새콤하고 매콤한 태국식 해산물 수프가 대표 메뉴입니다.', '/images/restaurants/088-tom-yum-goong.jpg', '똠얌꿍', '12:00:00', '22:00:00', '매월 마지막 화요일', 'Y', 'Y', 'Y'),
+    (89, '하이퐁누들', 'ASIAN', '인천광역시 연수구 송도과학로 24', '032-313-6429', '숯불고기와 쌀국수를 함께 즐기는 베트남식 분짜집입니다.', '/images/restaurants/089-bun-cha.jpg', '분짜', '09:00:00', '20:00:00', '월요일', 'N', 'Y', 'N'),
+    (90, '마닐라그릴', 'ASIAN', '경기도 성남시 분당구 판교역로 31', '031-330-6490', '간장과 식초로 조린 필리핀식 치킨 요리를 제공합니다.', '/images/restaurants/090-chicken-adobo.jpg', '치킨아도보', '10:30:00', '20:30:00', '화요일', 'Y', 'N', 'N'),
+    (91, '쿠알라룸푸르', 'ASIAN', '서울특별시 마포구 와우산로 38', '02-6367-5823', '진한 코코넛 국물과 매콤한 향신료가 특징입니다.', '/images/restaurants/091-laksa.jpg', '락사', '10:00:00', '21:00:00', '수요일', 'N', 'Y', 'N'),
+    (92, '델리하우스', 'ASIAN', '서울특별시 강남구 테헤란로 45', '02-6404-5876', '향신료에 재운 닭고기를 구워내는 인도 음식점입니다.', '/images/restaurants/092-tandoori-chicken.jpg', '탄두리치킨', '11:00:00', '22:00:00', '목요일', 'Y', 'Y', 'Y'),
+    (93, '비엣플레이트', 'ASIAN', '서울특별시 종로구 삼일대로 52', '02-6441-5929', '신선한 채소와 라이스페이퍼를 곁들인 건강 메뉴입니다.', '/images/restaurants/093-wolnam-ssam.jpg', '월남쌈', '11:30:00', '21:30:00', '일요일', 'N', 'N', 'N'),
+    (94, '타이스트릿', 'ASIAN', '서울특별시 송파구 올림픽로 59', '02-6478-5982', '태국식 볶음밥을 캐주얼하게 즐길 수 있는 매장입니다.', '/images/restaurants/094-khao-pad.jpg', '카오팟', '12:00:00', '22:00:00', '연중무휴', 'Y', 'Y', 'N'),
+    (95, '인도차이', 'ASIAN', '부산광역시 해운대구 해운대로 66', '051-415-6795', '시금치 커리와 치즈가 어울리는 채식 메뉴를 제공합니다.', '/images/restaurants/095-palak-paneer.jpg', '팔락파니르', '09:00:00', '20:00:00', '첫째·셋째 월요일', 'N', 'Y', 'N'),
+    (96, '호치민키친', 'ASIAN', '대구광역시 중구 동성로 73', '053-432-6856', '바삭한 베트남식 크레페와 신선한 채소가 특징입니다.', '/images/restaurants/096-banh-xeo.jpg', '반쎄오', '10:30:00', '20:30:00', '매월 마지막 화요일', 'Y', 'N', 'Y'),
+    (97, '라오스테이블', 'ASIAN', '광주광역시 동구 충장로 80', '062-449-6917', '허브와 고기가 어우러진 라오스식 샐러드가 대표 메뉴입니다.', '/images/restaurants/097-larb-moo.jpg', '라프무', '10:00:00', '21:00:00', '월요일', 'N', 'Y', 'N'),
+    (98, '자카르타볼', 'ASIAN', '대전광역시 서구 둔산로 87', '042-466-6978', '매콤달콤한 인도네시아식 볶음면을 제공합니다.', '/images/restaurants/098-mie-goreng.jpg', '미고렝', '11:00:00', '22:00:00', '화요일', 'Y', 'Y', 'N'),
+    (99, '치앙마이누들', 'ASIAN', '인천광역시 연수구 송도과학로 94', '032-483-7039', '코코넛 커리 국물과 바삭한 면 토핑이 특징입니다.', '/images/restaurants/099-khao-soi.jpg', '카오소이', '11:30:00', '21:30:00', '수요일', 'N', 'N', 'N'),
+    (100, '아시아마켓', 'ASIAN', '경기도 성남시 분당구 판교역로 101', '031-500-7100', '향신료에 재운 꼬치구이를 다양하게 즐길 수 있습니다.', '/images/restaurants/100-modum-satay.jpg', '모둠사테', '12:00:00', '22:00:00', '목요일', 'Y', 'Y', 'Y')
+ON DUPLICATE KEY UPDATE
+    restaurant_name = VALUES(restaurant_name),
+    category = VALUES(category),
+    address = VALUES(address),
+    phone_number = VALUES(phone_number),
+    description = VALUES(description),
+    image_url = VALUES(image_url),
+    main_menu_name = VALUES(main_menu_name),
+    open_time = VALUES(open_time),
+    close_time = VALUES(close_time),
+    closed_days = VALUES(closed_days),
+    parking_available = VALUES(parking_available),
+    wifi_available = VALUES(wifi_available),
+    multilingual_menu_available = VALUES(multilingual_menu_available),
+    updated_at = CURRENT_TIMESTAMP;
+
+-- Keep seed restaurants available for local reservation and waiting tests.
+UPDATE restaurant
+SET status = 'OPEN',
+    reservation_available = 'Y',
+    waiting_available = 'Y'
+WHERE restaurant_id BETWEEN 1 AND 100;
+
+-- Weekly operating hours for seed restaurants (one regular holiday per restaurant)
+CREATE TABLE IF NOT EXISTS restaurant_hours (
+    restaurant_hours_id BIGINT NOT NULL AUTO_INCREMENT,
+    restaurant_id BIGINT NOT NULL,
+    day_of_week VARCHAR(10) NOT NULL,
+    open_time TIME NOT NULL,
+    close_time TIME NOT NULL,
+    is_regular_holiday CHAR(1) NOT NULL DEFAULT 'N',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (restaurant_hours_id),
+    UNIQUE KEY uk_restaurant_hours_day (restaurant_id, day_of_week),
+    CONSTRAINT fk_restaurant_hours_restaurant
+        FOREIGN KEY (restaurant_id) REFERENCES restaurant (restaurant_id)
+);
+
+INSERT INTO restaurant_hours (
+    restaurant_id,
+    day_of_week,
+    open_time,
+    close_time,
+    is_regular_holiday,
+    created_at,
+    updated_at
+)
+SELECT
+    r.restaurant_id,
+    days.day_of_week,
+    CASE
+        WHEN MOD(r.restaurant_id, 7) = days.day_number THEN '00:00:00'
+        WHEN MOD(r.restaurant_id, 3) = 0 THEN '10:00:00'
+        WHEN MOD(r.restaurant_id, 3) = 1 THEN '11:00:00'
+        ELSE '11:30:00'
+    END AS open_time,
+    CASE
+        WHEN MOD(r.restaurant_id, 7) = days.day_number THEN '00:00:00'
+        WHEN MOD(r.restaurant_id, 3) = 0 THEN '20:00:00'
+        WHEN MOD(r.restaurant_id, 3) = 1 THEN '21:00:00'
+        ELSE '22:00:00'
+    END AS close_time,
+    CASE
+        WHEN MOD(r.restaurant_id, 7) = days.day_number THEN 'Y'
+        ELSE 'N'
+    END AS is_regular_holiday,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+FROM restaurant r
+CROSS JOIN (
+    SELECT 'MON' AS day_of_week, 0 AS day_number
+    UNION ALL SELECT 'TUE', 1
+    UNION ALL SELECT 'WED', 2
+    UNION ALL SELECT 'THU', 3
+    UNION ALL SELECT 'FRI', 4
+    UNION ALL SELECT 'SAT', 5
+    UNION ALL SELECT 'SUN', 6
+) days
+WHERE r.restaurant_id BETWEEN 1 AND 100
+  AND NOT EXISTS (
+      SELECT 1
+      FROM restaurant_hours rh
+      WHERE rh.restaurant_id = r.restaurant_id
+        AND rh.day_of_week = days.day_of_week
+  );
