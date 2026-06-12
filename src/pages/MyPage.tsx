@@ -13,6 +13,7 @@ type Reservation = {
   slotTime: string;
   headcount: number;
   status: string;
+  rejectionReason?: string | null;
 };
 
 type Waiting = {
@@ -85,8 +86,17 @@ const CAT_LABEL: Record<string, string> = {
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  CONFIRMED: '예약확정', VISITED: '방문완료', CANCELLED: '취소', NO_SHOW: '노쇼',
+  PENDING: '예약대기', CONFIRMED: '예약확정', VISITED: '방문완료',
+  CANCELLED: '취소', NO_SHOW: '노쇼', REJECTED: '예약거부',
   WAITING: '대기중', CALLED: '호출됨', ENTERED: '입장완료',
+};
+
+const REJECTION_REASON_LABEL: Record<string, string> = {
+  SLOT_FULL: '예약이 마감됐습니다.',
+  STORE_CLOSED: '매장 사정으로 해당 일시에 운영이 불가합니다.',
+  PARTY_SIZE_UNAVAILABLE: '요청하신 인원을 수용하기 어렵습니다.',
+  SPECIAL_EVENT: '단체 행사 예약으로 좌석이 부족합니다.',
+  OTHER: '기타 사유로 예약을 거부했습니다.',
 };
 
 const NOTI_LABEL: Record<string, { icon: string; color: string }> = {
@@ -98,7 +108,17 @@ const NOTI_LABEL: Record<string, { icon: string; color: string }> = {
   WAITING_CANCELLED: { icon: '❌', color: '#999' },
 };
 
-type Tab = 'reservation' | 'waiting' | 'favorite' | 'notification';
+type Tab = 'reservation' | 'waiting' | 'favorite' | 'review' | 'notification';
+
+interface Review {
+  reviewId: number;
+  restaurantId: number;
+  restaurantName: string;
+  rating: number;
+  content: string;
+  visitedAt: string;
+  createdAt: string;
+}
 
 export default function MyPage() {
   const navigate = useNavigate();
@@ -107,8 +127,13 @@ export default function MyPage() {
   const [waitings, setWaitings] = useState<Waiting[]>([]);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [selectedTokens, setSelectedTokens] = useState<Set<string>>(new Set());
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
 
   const user = JSON.parse(localStorage.getItem('nowait_user') || '{}') as StoredUser;
   const unreadCount = notifications.filter(n => n.isRead === 'N').length;
@@ -122,47 +147,73 @@ export default function MyPage() {
         setWaitings(DUMMY_WAITINGS);
         setFavorites(DUMMY_FAVORITES);
         setNotifications(DUMMY_NOTIFICATIONS);
-      } else {
-        const token = localStorage.getItem('nowait_token');
-        if (!token) {
-          navigate('/auth');
-          return;
-        }
-        const h = { Authorization: `Bearer ${token}` };
-        const [r1, r2, r3, r4] = await Promise.all([
-          fetch(`${API_BASE}/reservations/me`, { headers: h }),
-          fetch(`${API_BASE}/waitings/me/history`, { headers: h }),
-          fetch(`${API_BASE}/users/me/favorites`, { headers: h }),
-          fetch(`${API_BASE}/notifications/me`, { headers: h })
-        ]);
-        if (!r1.ok || !r3.ok || !r4.ok) throw new Error('마이페이지 정보를 불러오지 못했습니다.');
+        return;
+      }
 
+      const token = localStorage.getItem('nowait_token');
+      if (!token) { navigate('/auth'); return; }
+      const h = { Authorization: `Bearer ${token}` };
+
+      // 각 API를 독립적으로 처리 — 하나가 실패해도 나머지는 정상 표시
+      const [r1, r2, r3, r4, r5] = await Promise.all([
+        fetch(`${API_BASE}/reservations/me`, { headers: h }),
+        fetch(`${API_BASE}/waitings/me/history`, { headers: h }),
+        fetch(`${API_BASE}/users/me/favorites`, { headers: h }),
+        fetch(`${API_BASE}/notifications/me`, { headers: h }),
+        fetch(`${API_BASE}/users/me/reviews`, { headers: h }),
+      ]);
+
+      if (r1.status === 401) { navigate('/auth'); return; }
+
+      if (r1.ok) {
         setReservations(await r1.json() as Reservation[]);
-        setFavorites(await r3.json() as Favorite[]);
-        setNotifications(await r4.json() as Notification[]);
+      } else {
+        console.error('예약 목록 조회 실패:', r1.status);
+        setReservations([]);
+      }
 
-        if (r2.ok) {
-          const waitingList = await r2.json() as Waiting[];
-          const waitingsWithNames = await Promise.all(
-            waitingList.map(async (waiting) => {
-              try {
-                const restaurantResponse = await fetch(`${API_BASE}/restaurants/${waiting.restaurantId}`);
-                const restaurant = restaurantResponse.ok
-                  ? await restaurantResponse.json() as { name?: string }
-                  : null;
-                return { ...waiting, restaurantName: restaurant?.name };
-              } catch {
-                return waiting;
-              }
-            })
-          );
-          setWaitings(waitingsWithNames);
-        } else {
-          setWaitings([]);
-        }
+      if (r3.ok) {
+        setFavorites(await r3.json() as Favorite[]);
+      } else {
+        console.error('즐겨찾기 조회 실패:', r3.status);
+        setFavorites([]);
+      }
+
+      if (r4.ok) {
+        setNotifications(await r4.json() as Notification[]);
+      } else {
+        console.error('알림 조회 실패:', r4.status);
+        setNotifications([]);
+      }
+
+      if (r5.ok) {
+        setReviews(await r5.json() as Review[]);
+      } else {
+        console.error('리뷰 목록 조회 실패:', r5.status);
+        setReviews([]);
+      }
+
+      if (r2.ok) {
+        const waitingList = await r2.json() as Waiting[];
+        const waitingsWithNames = await Promise.all(
+          waitingList.map(async (waiting) => {
+            try {
+              const restaurantResponse = await fetch(`${API_BASE}/restaurants/${waiting.restaurantId}`);
+              const restaurant = restaurantResponse.ok
+                ? await restaurantResponse.json() as { name?: string }
+                : null;
+              return { ...waiting, restaurantName: restaurant?.name };
+            } catch {
+              return waiting;
+            }
+          })
+        );
+        setWaitings(waitingsWithNames);
+      } else {
+        setWaitings([]);
       }
     } catch (error) {
-      console.error(error);
+      console.error('마이페이지 데이터 로드 오류:', error);
     } finally {
       setLoading(false);
     }
@@ -174,27 +225,146 @@ export default function MyPage() {
     void fetchData();
   }, [fetchData]);
 
+  async function updateName() {
+    if (!nameInput.trim()) return;
+    const token = localStorage.getItem('nowait_token');
+    const res = await fetch(`${API_BASE}/users/me`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: nameInput.trim() }),
+    });
+    if (res.ok) {
+      const updated = await res.json() as { name: string; email: string };
+      const stored = JSON.parse(localStorage.getItem('nowait_user') || '{}') as StoredUser;
+      localStorage.setItem('nowait_user', JSON.stringify({ ...stored, name: updated.name }));
+      setEditingName(false);
+      window.location.reload();
+    } else {
+      alert('이름 변경에 실패했습니다.');
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem('nowait_token');
+    localStorage.removeItem('nowait_user');
+    navigate('/auth');
+  }
+
+  async function withdrawAccount() {
+    if (!confirm('정말 탈퇴하시겠어요? 모든 데이터가 삭제됩니다.')) return;
+    const token = localStorage.getItem('nowait_token');
+    const res = await fetch(`${API_BASE}/users/me`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      alert('탈퇴가 완료됐습니다.');
+      logout();
+    } else {
+      alert('탈퇴 처리 중 오류가 발생했습니다.');
+    }
+  }
+
   async function cancelReservation(reservationToken: string) {
     if (!confirm('예약을 취소하시겠어요?')) return;
-    if (USE_DUMMY) {
-      setReservations(prev => prev.map(r => r.reservationToken === reservationToken ? { ...r, status: 'CANCELLED' } : r));
-    } else {
-      const token = localStorage.getItem('nowait_token');
-      const response = await fetch(`${API_BASE}/reservations/${reservationToken}/cancel`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) throw new Error('예약 취소에 실패했습니다.');
-      await fetchData();
+    try {
+      if (USE_DUMMY) {
+        setReservations(prev => prev.map(r => r.reservationToken === reservationToken ? { ...r, status: 'CANCELLED' } : r));
+      } else {
+        const token = localStorage.getItem('nowait_token');
+        const response = await fetch(`${API_BASE}/reservations/${reservationToken}/cancel`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({})) as { message?: string };
+          alert(err.message || '예약 취소에 실패했습니다.');
+          return;
+        }
+        await fetchData();
+      }
+    } catch {
+      alert('예약 취소 중 오류가 발생했습니다.');
     }
   }
 
   async function cancelWaiting(waitingToken: string) {
     if (!confirm('웨이팅을 취소하시겠어요?')) return;
-    if (USE_DUMMY) {
-      setWaitings(prev => prev.map(w => w.waitingToken === waitingToken ? { ...w, status: 'CANCELLED' } : w));
+    try {
+      if (USE_DUMMY) {
+        setWaitings(prev => prev.map(w => w.waitingToken === waitingToken ? { ...w, status: 'CANCELLED' } : w));
+      } else {
+        const token = localStorage.getItem('nowait_token');
+        const response = await fetch(`${API_BASE}/waitings/${waitingToken}/cancel`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({})) as { message?: string };
+          alert(err.message || '웨이팅 취소에 실패했습니다.');
+          return;
+        }
+        await fetchData();
+      }
+    } catch {
+      alert('웨이팅 취소 중 오류가 발생했습니다.');
+    }
+  }
+
+  function toggleSelect(reservationToken: string) {
+    setSelectedTokens(prev => {
+      const next = new Set(prev);
+      if (next.has(reservationToken)) next.delete(reservationToken);
+      else next.add(reservationToken);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    const deletable = filteredReservations.filter(r => r.status === 'CANCELLED' || r.status === 'NO_SHOW' || r.status === 'REJECTED');
+    const allSelected = deletable.every(r => selectedTokens.has(r.reservationToken));
+    if (allSelected) {
+      setSelectedTokens(prev => {
+        const next = new Set(prev);
+        deletable.forEach(r => next.delete(r.reservationToken));
+        return next;
+      });
     } else {
-      const token = localStorage.getItem('nowait_token');
-      const response = await fetch(`${API_BASE}/waitings/${waitingToken}/cancel`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) throw new Error('웨이팅 취소에 실패했습니다.');
+      setSelectedTokens(prev => {
+        const next = new Set(prev);
+        deletable.forEach(r => next.add(r.reservationToken));
+        return next;
+      });
+    }
+  }
+
+  async function deleteSelectedReservations() {
+    if (selectedTokens.size === 0) return;
+    if (!confirm(`선택한 ${selectedTokens.size}건의 내역을 삭제하시겠어요?`)) return;
+    setDeleteLoading(true);
+    try {
+      if (USE_DUMMY) {
+        setReservations(prev => prev.filter(r => !selectedTokens.has(r.reservationToken)));
+        setSelectedTokens(new Set());
+        return;
+      }
+      const jwtToken = localStorage.getItem('nowait_token');
+      const results = await Promise.all(
+        [...selectedTokens].map(resToken =>
+          fetch(`${API_BASE}/reservations/${resToken}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${jwtToken}` },
+          })
+        )
+      );
+      const failed = results.filter(r => !r.ok).length;
+      if (failed > 0) alert(`${failed}건 삭제에 실패했습니다.`);
+      setSelectedTokens(new Set());
       await fetchData();
+    } catch {
+      alert('삭제 중 오류가 발생했습니다.');
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -257,10 +427,12 @@ export default function MyPage() {
     // 상태 태그
     statusTag: (status: string) => {
       const map: Record<string, { bg: string; color: string }> = {
+        PENDING: { bg: '#e0f2fe', color: '#0369a1' },
         CONFIRMED: { bg: 'var(--amber)', color: 'var(--ink)' },
         VISITED: { bg: '#d1fae5', color: '#065f46' },
         CANCELLED: { bg: '#f5f5f5', color: '#999' },
         NO_SHOW: { bg: '#fee2e2', color: '#991b1b' },
+        REJECTED: { bg: '#fce7f3', color: '#9d174d' },
         WAITING: { bg: 'var(--tomato-light)', color: 'var(--tomato)' },
         CALLED: { bg: 'var(--amber)', color: 'var(--ink)' },
         ENTERED: { bg: '#d1fae5', color: '#065f46' },
@@ -288,10 +460,32 @@ export default function MyPage() {
         <div style={s.profile}>
           <div style={s.avatar}>👤</div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '1.1rem', fontWeight: 900 }}>{user.name || '사용자'}님 👋</div>
+            {editingName ? (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  autoFocus
+                  value={nameInput}
+                  onChange={e => setNameInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') void updateName(); if (e.key === 'Escape') setEditingName(false); }}
+                  style={{ padding: '4px 10px', border: '2px solid var(--ink)', borderRadius: 8, fontFamily: 'inherit', fontWeight: 700, fontSize: '0.95rem', width: 130 }}
+                />
+                <button className="btn btn-tomato btn-sm" onClick={() => void updateName()}>저장</button>
+                <button className="btn btn-sm" style={{ background: '#f5f5f5', border: '2px solid var(--ink)' }} onClick={() => setEditingName(false)}>취소</button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: '1.1rem', fontWeight: 900 }}>{user.name || '사용자'}님 👋</div>
+                <button className="btn btn-sm" style={{ background: 'transparent', border: 'none', boxShadow: 'none', padding: '2px 6px', fontSize: '0.8rem', color: 'var(--muted)' }}
+                  onClick={() => { setNameInput(user.name || ''); setEditingName(true); }}>✏️</button>
+              </div>
+            )}
             <div style={{ fontSize: '0.84rem', color: 'var(--muted)', marginTop: 2 }}>{user.email}</div>
           </div>
-          <button className="btn btn-outline btn-sm" onClick={() => navigate('/')}>홈으로</button>
+          <div style={{ display: 'flex', gap: 6, flexDirection: 'column', alignItems: 'flex-end' }}>
+            <button className="btn btn-outline btn-sm" onClick={() => navigate('/')}>홈으로</button>
+            <button className="btn btn-sm" style={{ background: '#fff', border: '2px solid var(--ink)', fontSize: '0.75rem', color: '#666' }} onClick={logout}>로그아웃</button>
+            <button className="btn btn-sm" style={{ background: '#fff', border: '2px solid var(--tomato)', fontSize: '0.75rem', color: 'var(--tomato)' }} onClick={() => void withdrawAccount()}>회원탈퇴</button>
+          </div>
         </div>
 
         {/* 탭 */}
@@ -300,9 +494,10 @@ export default function MyPage() {
             { key: 'reservation', label: '📋 예약 내역' },
             { key: 'waiting', label: '⏳ 웨이팅 내역' },
             { key: 'favorite', label: '❤️ 즐겨찾기' },
+            { key: 'review', label: '⭐ 리뷰 내역' },
             { key: 'notification', label: `🔔 알림${unreadCount > 0 ? ` (${unreadCount})` : ''}` },
           ] as { key: Tab; label: string }[]).map(t => (
-            <button key={t.key} style={s.tab(tab === t.key)} onClick={() => setTab(t.key)}>
+            <button key={t.key} style={s.tab(tab === t.key)} onClick={() => { setTab(t.key); setSelectedTokens(new Set()); }}>
               {t.label}
             </button>
           ))}
@@ -313,48 +508,115 @@ export default function MyPage() {
         {/* ===== 예약 탭 ===== */}
         {!loading && tab === 'reservation' && (
           <div>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-              {['ALL', 'CONFIRMED', 'VISITED', 'CANCELLED', 'NO_SHOW'].map(s => (
-                <button key={s} onClick={() => setStatusFilter(s)}
-                  style={{
-                    padding: '7px 14px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 800,
-                    border: `2px solid var(--ink)`, fontFamily: 'inherit', cursor: 'pointer',
-                    background: statusFilter === s ? 'var(--ink)' : '#fff',
-                    color: statusFilter === s ? '#fff' : 'var(--muted)',
-                    boxShadow: statusFilter === s ? '2px 2px 0 var(--tomato)' : '2px 2px 0 var(--ink)'
-                  }}>
-                  {s === 'ALL' ? '전체' : STATUS_LABEL[s]}
-                </button>
-              ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {['ALL', 'PENDING', 'CONFIRMED', 'VISITED', 'CANCELLED', 'NO_SHOW', 'REJECTED'].map(s => (
+                  <button key={s} onClick={() => setStatusFilter(s)}
+                    style={{
+                      padding: '7px 14px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 800,
+                      border: `2px solid var(--ink)`, fontFamily: 'inherit', cursor: 'pointer',
+                      background: statusFilter === s ? 'var(--ink)' : '#fff',
+                      color: statusFilter === s ? '#fff' : 'var(--muted)',
+                      boxShadow: statusFilter === s ? '2px 2px 0 var(--tomato)' : '2px 2px 0 var(--ink)'
+                    }}>
+                    {s === 'ALL' ? '전체' : STATUS_LABEL[s]}
+                  </button>
+                ))}
+              </div>
+              {(() => {
+                const deletable = filteredReservations.filter(r => r.status === 'CANCELLED' || r.status === 'NO_SHOW' || r.status === 'REJECTED');
+                const allSelected = deletable.length > 0 && deletable.every(r => selectedTokens.has(r.reservationToken));
+                return deletable.length > 0 ? (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                      onClick={toggleSelectAll}
+                      style={{
+                        padding: '7px 14px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 800,
+                        border: '2px solid var(--ink)', fontFamily: 'inherit', cursor: 'pointer',
+                        background: allSelected ? 'var(--ink)' : '#fff',
+                        color: allSelected ? '#fff' : 'var(--muted)',
+                        boxShadow: '2px 2px 0 var(--ink)', whiteSpace: 'nowrap' as const,
+                      }}>
+                      {allSelected ? '선택 해제' : '전체 선택'}
+                    </button>
+                    {selectedTokens.size > 0 && (
+                      <button
+                        onClick={() => void deleteSelectedReservations()}
+                        disabled={deleteLoading}
+                        style={{
+                          padding: '7px 14px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 800,
+                          border: '2px solid var(--ink)', fontFamily: 'inherit', cursor: 'pointer',
+                          background: 'var(--tomato)', color: '#fff',
+                          boxShadow: '2px 2px 0 var(--ink)', whiteSpace: 'nowrap' as const,
+                          opacity: deleteLoading ? 0.6 : 1,
+                        }}>
+                        🗑 {selectedTokens.size}건 삭제
+                      </button>
+                    )}
+                  </div>
+                ) : null;
+              })()}
             </div>
             {filteredReservations.length === 0 ? (
               <div className="empty-state"><div className="icon">📋</div><p>예약 내역이 없어요</p></div>
-            ) : filteredReservations.map(r => (
-              <div key={r.reservationToken} style={s.card}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <span style={{ fontWeight: 900, fontSize: '1rem' }}>{r.restaurantName}</span>
-                    <span style={s.statusTag(r.status)}>{STATUS_LABEL[r.status]}</span>
+            ) : filteredReservations.map(r => {
+              const isDeletable = r.status === 'CANCELLED' || r.status === 'NO_SHOW' || r.status === 'REJECTED';
+              const isSelected = selectedTokens.has(r.reservationToken);
+              return (
+                <div key={r.reservationToken} style={{
+                  ...s.card,
+                  borderColor: isSelected ? 'var(--tomato)' : 'var(--ink)',
+                  background: isSelected ? '#fff9f5' : '#fff',
+                  cursor: isDeletable ? 'pointer' : 'default',
+                }}
+                  onClick={isDeletable ? () => toggleSelect(r.reservationToken) : undefined}
+                >
+                  {isDeletable && (
+                    <div style={{
+                      width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                      border: `2.5px solid ${isSelected ? 'var(--tomato)' : 'var(--muted)'}`,
+                      background: isSelected ? 'var(--tomato)' : '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      marginRight: 4,
+                    }}>
+                      {isSelected && <span style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                    </div>
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontWeight: 900, fontSize: '1rem' }}>{r.restaurantName}</span>
+                      <span style={s.statusTag(r.status)}>{STATUS_LABEL[r.status]}</span>
+                    </div>
+                    <div style={{ fontSize: '0.84rem', color: 'var(--muted)', fontWeight: 600 }}>
+                      📅 {r.slotDate} · 🕐 {r.slotTime} · 👥 {r.headcount}명
+                    </div>
+                    {r.status === 'PENDING' && (
+                      <div style={{ marginTop: 6, fontSize: '0.8rem', color: '#0369a1', fontWeight: 700, background: '#e0f2fe', padding: '4px 10px', borderRadius: 8, display: 'inline-block' }}>
+                        ⏳ 점주 승인 대기 중입니다
+                      </div>
+                    )}
+                    {r.status === 'REJECTED' && r.rejectionReason && (
+                      <div style={{ marginTop: 6, fontSize: '0.8rem', color: '#9d174d', fontWeight: 700, background: '#fce7f3', padding: '4px 10px', borderRadius: 8, display: 'inline-block' }}>
+                        ❌ 거부 사유: {REJECTION_REASON_LABEL[r.rejectionReason] ?? r.rejectionReason}
+                      </div>
+                    )}
+                    {r.status === 'VISITED' && (
+                      <button style={{
+                        marginTop: 8, padding: '6px 12px', borderRadius: 999,
+                        border: '2px solid var(--amber)', background: 'var(--amber)', color: 'var(--ink)',
+                        fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer'
+                      }}
+                        onClick={e => { e.stopPropagation(); navigate(`/restaurant/${r.restaurantId}?tab=review&reservationToken=${r.reservationToken}`); }}>
+                        ⭐ 리뷰 작성
+                      </button>
+                    )}
                   </div>
-                  <div style={{ fontSize: '0.84rem', color: 'var(--muted)', fontWeight: 600 }}>
-                    📅 {r.slotDate} · 🕐 {r.slotTime} · 👥 {r.headcount}명
-                  </div>
-                  {r.status === 'VISITED' && (
-                    <button style={{
-                      marginTop: 8, padding: '6px 12px', borderRadius: 999,
-                      border: '2px solid var(--amber)', background: 'var(--amber)', color: 'var(--ink)',
-                      fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer'
-                    }}
-                      onClick={() => navigate(`/restaurant/${r.restaurantId}?tab=review&reservationId=${r.reservationId}`)}>
-                      ⭐ 리뷰 작성
-                    </button>
+                  {(r.status === 'CONFIRMED' || r.status === 'PENDING') && (
+                    <button style={s.cancelBtn} onClick={e => { e.stopPropagation(); void cancelReservation(r.reservationToken); }}>취소</button>
                   )}
                 </div>
-                {r.status === 'CONFIRMED' && (
-                  <button style={s.cancelBtn} onClick={() => void cancelReservation(r.reservationToken)}>취소</button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -452,6 +714,57 @@ export default function MyPage() {
                           ❌
                         </button>
                       </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== 리뷰 내역 탭 ===== */}
+        {!loading && tab === 'review' && (
+          <div>
+            {reviews.length === 0 ? (
+              <div className="empty-state"><div className="icon">⭐</div><p>작성한 리뷰가 없어요</p></div>
+            ) : (
+              <div style={{ display: 'grid', gap: 14 }}>
+                {reviews.map(r => (
+                  <div key={r.reviewId} style={{
+                    background: '#fff', border: '2.5px solid var(--ink)',
+                    borderRadius: 16, boxShadow: '4px 4px 0 var(--ink)', padding: '18px 20px',
+                    display: 'flex', flexDirection: 'column', gap: 8,
+                  }}>
+                    <div style={{ fontWeight: 900, fontSize: '0.95rem', marginBottom: 4 }}>{r.restaurantName}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {Array.from({ length: 5 }, (_, i) => (
+                          <span key={i} style={{ fontSize: '1.1rem', color: i < r.rating ? '#ffb22e' : '#e0e0e0' }}>★</span>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-sm" style={{ background: '#f5f5f5', border: '2px solid var(--ink)', fontSize: '0.78rem' }}
+                          onClick={() => navigate(`/restaurant/${r.restaurantId}`)}>
+                          식당 보기
+                        </button>
+                        <button className="btn btn-sm" style={{ background: 'var(--tomato)', color: '#fff', border: '2px solid var(--ink)', fontSize: '0.78rem' }}
+                          onClick={async () => {
+                            if (!confirm('리뷰를 삭제할까요?')) return;
+                            const token = localStorage.getItem('nowait_token');
+                            const res = await fetch(`${API_BASE}/reviews/${r.reviewId}`, {
+                              method: 'DELETE',
+                              headers: { Authorization: `Bearer ${token}` },
+                            });
+                            if (res.ok) setReviews(prev => prev.filter(x => x.reviewId !== r.reviewId));
+                            else alert('삭제에 실패했습니다.');
+                          }}>
+                          삭제
+                        </button>
+                      </div>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.6 }}>{r.content}</p>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
+                      방문일: {r.visitedAt ? r.visitedAt.slice(0, 10) : '-'} · 작성일: {r.createdAt.slice(0, 10)}
                     </div>
                   </div>
                 ))}

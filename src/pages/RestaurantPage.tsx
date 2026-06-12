@@ -158,7 +158,7 @@ export default function RestaurantPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const reservationId = searchParams.get('reservationId');
+  const reservationToken = searchParams.get('reservationToken');
 
   const [tab, setTab] = useState<'reserve' | 'waiting' | 'review'>(
     searchParams.get('tab') === 'review' ? 'review' : 'reserve'
@@ -451,7 +451,7 @@ export default function RestaurantPage() {
         setReviewRating(5);
         alert('리뷰가 등록됐어요!');
       } else {
-        await request(`/reservations/${reservationId}/reviews`, {
+        await request(`/reservations/${reservationToken}/reviews`, {
           method: 'POST',
           body: JSON.stringify({ rating: reviewRating, content: reviewContent.trim() }),
         });
@@ -827,7 +827,7 @@ export default function RestaurantPage() {
               boxShadow: '5px 5px 0 var(--ink)', padding: 24, marginBottom: 20
             }}>
               <div style={{ fontSize: '1rem', fontWeight: 900, marginBottom: 16 }}>✍️ 리뷰 작성하기</div>
-              {!USE_DUMMY && !reservationId && (
+              {!USE_DUMMY && !reservationToken && (
                 <div style={{
                   padding: '16px 18px', background: 'var(--cream)', borderRadius: 12,
                   border: '2px solid var(--line)', color: 'var(--muted)',
@@ -838,7 +838,7 @@ export default function RestaurantPage() {
                   마이페이지 → 예약 내역 → 방문 완료 예약의 <strong>리뷰 작성</strong> 버튼을 이용해주세요.
                 </div>
               )}
-              {(USE_DUMMY || reservationId) && (
+              {(USE_DUMMY || reservationToken) && (
                 <>
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ fontSize: '0.88rem', fontWeight: 800, marginBottom: 8 }}>평점</div>

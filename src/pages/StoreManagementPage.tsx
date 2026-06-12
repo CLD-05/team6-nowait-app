@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { API_BASE } from '../lib/api';
@@ -177,6 +177,11 @@ export default function StoreManagementPage() {
   const [hoursMsg, setHoursMsg] = useState('');
   const [hoursSaving, setHoursSaving] = useState(false);
 
+  // 이미지 업로드
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageMsg, setImageMsg] = useState('');
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
   // 웨이팅 세션
   const [waitingSession, setWaitingSession] = useState<WaitingSession | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
@@ -348,6 +353,18 @@ export default function StoreManagementPage() {
     }
   }
 
+  async function handleDeleteSlot(slotId: number) {
+    if (!confirm('슬롯을 삭제할까요?')) return;
+    setSlotMsg('');
+    try {
+      await apiFetch(`/owner/slots/${slotId}`, { method: 'DELETE' });
+      setSlots(prev => prev.filter(s => s.slotId !== slotId));
+      setSlotMsg('슬롯이 삭제됐어요.');
+    } catch (err) {
+      setSlotMsg(err instanceof Error ? err.message : '슬롯 삭제에 실패했습니다.');
+    }
+  }
+
   async function fetchWaitingSession() {
     if (!restaurantId) return;
     try {
@@ -395,6 +412,50 @@ export default function StoreManagementPage() {
   function updateField<K extends keyof RestaurantForm>(key: K, value: RestaurantForm[K]) {
     setForm(current => ({ ...current, [key]: value }));
     setMessage('');
+  }
+
+  async function handleImageUpload(file: File) {
+    if (!restaurantId) {
+      setImageMsg('먼저 매장을 등록해주세요.');
+      return;
+    }
+    setImageUploading(true);
+    setImageMsg('');
+    try {
+      // 1) Presigned URL 발급
+      const token = localStorage.getItem('nowait_token');
+      const presignRes = await fetch(
+        `${API_BASE}/images/presigned-url?restaurantId=${restaurantId}&filename=${encodeURIComponent(file.name)}`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!presignRes.ok) throw new Error('Presigned URL 발급에 실패했습니다.');
+      const { presignedUrl, imageKey } = await presignRes.json() as { presignedUrl: string; imageKey: string };
+
+      // 2) S3 직접 업로드
+      const uploadRes = await fetch(presignedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      if (!uploadRes.ok) throw new Error('S3 업로드에 실패했습니다.');
+
+      // 3) complete API 호출 → DB에 S3 URL 저장
+      const completeRes = await fetch(`${API_BASE}/images/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ restaurantId, imageKey }),
+      });
+      if (!completeRes.ok) throw new Error('이미지 저장에 실패했습니다.');
+      const { imageUrl } = await completeRes.json() as { imageUrl: string };
+
+      // 4) 화면에 반영
+      updateField('imageUrl', imageUrl);
+      setImageMsg('이미지가 업로드되었습니다.');
+    } catch (err) {
+      setImageMsg(err instanceof Error ? err.message : '이미지 업로드 중 오류가 발생했습니다.');
+    } finally {
+      setImageUploading(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -547,10 +608,39 @@ export default function StoreManagementPage() {
                   <span>대표 메뉴</span>
                   <input value={form.mainMenuName} onChange={event => updateField('mainMenuName', event.target.value)} placeholder="대표 메뉴명" />
                 </label>
-                <label className="store-field store-field-wide">
-                  <span>대표 이미지 URL</span>
-                  <input value={form.imageUrl} onChange={event => updateField('imageUrl', event.target.value)} placeholder="https://..." />
-                </label>
+                <div className="store-field store-field-wide">
+                  <span>대표 이미지</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {form.imageUrl && (
+                      <img
+                        src={form.imageUrl.startsWith('http') ? form.imageUrl : `https://${form.imageUrl}`}
+                        alt="대표 이미지 미리보기"
+                        style={{ width: '120px', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e5e7eb' }}
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    )}
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleImageUpload(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => imageInputRef.current?.click()}
+                      disabled={imageUploading}
+                      style={{ alignSelf: 'flex-start', padding: '6px 14px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#f9fafb', cursor: 'pointer', fontSize: '14px' }}
+                    >
+                      {imageUploading ? '업로드 중...' : '이미지 선택'}
+                    </button>
+                    {imageMsg && <span style={{ fontSize: '13px', color: imageMsg.includes('실패') || imageMsg.includes('오류') ? '#ef4444' : '#22c55e' }}>{imageMsg}</span>}
+                  </div>
+                </div>
                 <label className="store-field store-field-wide">
                   <span>매장 소개</span>
                   <textarea value={form.description} onChange={event => updateField('description', event.target.value)} rows={5} placeholder="매장의 분위기와 대표 메뉴를 소개해주세요." />
@@ -797,10 +887,17 @@ export default function StoreManagementPage() {
                                     color: slot.available ? '#087451' : '#666',
                                   }}>{slot.available ? '예약가능' : '마감'}</span>
                                 </div>
-                                <button type="button" className="btn btn-white btn-sm"
-                                  onClick={() => setEditingSlot({ slotId: slot.slotId, totalCount: slot.totalCount, minHeadcount: 1, maxHeadcount: 8 })}>
-                                  수정
-                                </button>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                  <button type="button" className="btn btn-white btn-sm"
+                                    onClick={() => setEditingSlot({ slotId: slot.slotId, totalCount: slot.totalCount, minHeadcount: 1, maxHeadcount: 8 })}>
+                                    수정
+                                  </button>
+                                  <button type="button" className="btn btn-sm"
+                                    style={{ background: '#fff', border: '2px solid var(--ink)', color: 'var(--tomato)', fontWeight: 800 }}
+                                    onClick={() => void handleDeleteSlot(slot.slotId)}>
+                                    삭제
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </div>

@@ -3,9 +3,7 @@
 // 공통 fetch 함수 + API Base URL 환경변수 관리
 // ============================================
 
-export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
-export const IMAGE_BASE = import.meta.env.VITE_API_BASE_URL
-  || API_BASE.replace(/\/api\/v1\/?$/, '');
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
 
 // JWT 토큰 가져오기
 function getToken(): string | null {
@@ -27,7 +25,6 @@ export async function request<T>(
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
   if (res.status === 401) {
-    // 토큰 만료 시 로그인 페이지로
     localStorage.removeItem('nowait_token');
     localStorage.removeItem('nowait_user');
     window.location.href = '/auth';
@@ -40,5 +37,7 @@ export async function request<T>(
   }
 
   if (res.status === 204) return null as T;
-  return res.json();
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) return res.json();
+  return res.text() as unknown as T;
 }

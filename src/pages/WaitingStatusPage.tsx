@@ -174,12 +174,13 @@ export default function WaitingStatusPage() {
     ? Math.round(((data.totalWaiting - data.aheadCount) / data.totalWaiting) * 100)
     : 100;
   const isCalled = data.status === 'CALLED';
+  const isNearCall = data.status === 'WAITING' && data.aheadCount <= 2 && data.aheadCount > 0;
   const isEntered = data.status === 'ENTERED';
   const isCancelled = data.status === 'CANCELLED';
   const canCancel = data.status === 'WAITING' || data.status === 'CALLED';
 
   return (
-    <div style={{ minHeight: '100vh', background: isCalled ? 'var(--tomato)' : 'var(--cream)', transition: 'background 0.5s', opacity: isCancelled ? 0.85 : 1 }}>
+    <div style={{ minHeight: '100vh', background: isCalled ? 'var(--tomato)' : isNearCall ? '#fff7e6' : 'var(--cream)', transition: 'background 0.5s', opacity: isCancelled ? 0.85 : 1 }}>
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '32px 20px 60px' }}>
 
         {/* 헤더 */}
@@ -203,6 +204,19 @@ export default function WaitingStatusPage() {
           </div>
           <div style={{ width: 40 }} />
         </div>
+
+        {/* 곧 호출 상태 (2팀 이하 남음) */}
+        {isNearCall && (
+          <div style={{ textAlign: 'center', marginBottom: 24, padding: '16px', background: '#ffb22e', border: '2.5px solid var(--ink)', borderRadius: 16, boxShadow: '4px 4px 0 var(--ink)', animation: 'fadeUp 0.5s ease' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: 6 }}>⚡</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--ink)', marginBottom: 4 }}>
+              곧 호출될 예정이에요!
+            </div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'rgba(0,0,0,0.7)' }}>
+              앞에 {data.aheadCount}팀 남았습니다. 매장 근처에 대기해 주세요.
+            </div>
+          </div>
+        )}
 
         {/* 호출됨 상태 */}
         {isCalled && (
@@ -347,24 +361,22 @@ export default function WaitingStatusPage() {
           </div>
         </div>
 
-        {/* 실시간 연결 상태 */}
-        {!isEntered && (
+        {/* 실시간 연결 상태 — 연결됐을 때만 표시 */}
+        {!isEntered && sseConnected && (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6,
             padding: '8px 16px', marginBottom: 20
           }}>
             <div style={{
               width: 8, height: 8, borderRadius: '50%',
-              background: sseConnected
-                ? (isCalled ? '#fff' : 'var(--mint)')
-                : (isCalled ? 'rgba(255,255,255,0.4)' : 'var(--muted)'),
-              animation: sseConnected ? 'blink 1s infinite' : 'none'
+              background: isCalled ? '#fff' : 'var(--mint)',
+              animation: 'blink 1s infinite'
             }} />
             <span style={{
               fontSize: '0.78rem', fontWeight: 800,
               color: isCalled ? 'rgba(255,255,255,0.7)' : 'var(--muted)'
             }}>
-              {sseConnected ? '실시간 연결됨' : '연결 중...'}
+              실시간 연결됨
             </span>
           </div>
         )}

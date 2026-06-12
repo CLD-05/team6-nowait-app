@@ -5,7 +5,7 @@ import { API_BASE } from '../lib/api';
 
 type SessionStatus = 'OPEN' | 'PAUSED' | 'CLOSED';
 type WaitingStatus = 'WAITING' | 'CALLED' | 'ENTERED' | 'CANCELLED';
-type ReservationStatus = 'CONFIRMED' | 'VISITED' | 'NO_SHOW';
+type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'VISITED' | 'NO_SHOW' | 'REJECTED';
 
 type WaitingSession = {
   sessionId: number;
@@ -24,8 +24,10 @@ type OwnerWaiting = {
 };
 
 type OwnerReservation = {
-  reservationId: number;
+  reservationToken: string;
+  reservationId: number | null;
   userName: string;
+  slotDate: string;
   slotTime: string;
   headcount: number;
   status: ReservationStatus;
@@ -44,9 +46,11 @@ const STATUS_LABEL: Record<SessionStatus | WaitingStatus | ReservationStatus, st
   CALLED: '호출됨',
   ENTERED: '입장 완료',
   CANCELLED: '취소',
+  PENDING: '예약 대기',
   CONFIRMED: '예약 확정',
   VISITED: '방문 완료',
   NO_SHOW: '노쇼',
+  REJECTED: '예약 거부',
 };
 
 const STATUS_CLASS: Record<WaitingStatus | ReservationStatus, string> = {
@@ -54,9 +58,11 @@ const STATUS_CLASS: Record<WaitingStatus | ReservationStatus, string> = {
   CALLED: 'tag-called',
   ENTERED: 'tag-entered',
   CANCELLED: 'tag-cancelled',
+  PENDING: 'tag-waiting',
   CONFIRMED: 'tag-confirmed',
   VISITED: 'tag-visited',
   NO_SHOW: 'tag-noshow',
+  REJECTED: 'tag-cancelled',
 };
 
 function formatDateTime(raw: string | null | undefined): string {
@@ -103,17 +109,23 @@ export default function OwnerPage() {
   const [waitings, setWaitings] = useState<OwnerWaiting[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
 
-  // 예약은 백엔드 미구현으로 빈 목록
-  const reservations: OwnerReservation[] = [];
+  const [reservations, setReservations] = useState<OwnerReservation[]>([]);
+  const [rejectingToken, setRejectingToken] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('SLOT_FULL');
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── 데이터 로드 ─────────────────────────────────────────────
 
   const fetchLiveData = useCallback(async (restaurantId: number) => {
-    const [sessionRes, waitingsRes] = await Promise.allSettled([
+    const [sessionRes, waitingsRes, reservationsRes] = await Promise.allSettled([
       apiFetch<WaitingSession>(`/restaurants/${restaurantId}/waiting-session`),
       apiFetch<OwnerWaiting[]>(`/owners/restaurants/${restaurantId}/waitings`),
+      apiFetch<Array<{
+        reservationToken: string; reservationId: number | null;
+        slotDate: string; slotTime: string; headcount: number;
+        status: ReservationStatus; userName?: string;
+      }>>(`/owner/restaurants/${restaurantId}/reservations`),
     ]);
 
     if (sessionRes.status === 'fulfilled') setSession(sessionRes.value);
@@ -124,6 +136,25 @@ export default function OwnerPage() {
         ...w,
         registeredAt: formatDateTime(w.registeredAt),
       })));
+    } else {
+      setWaitings([]);
+    }
+
+    if (reservationsRes.status === 'fulfilled') {
+      setReservations(reservationsRes.value.map(r => ({
+        reservationToken: r.reservationToken,
+        reservationId: r.reservationId,
+        userName: r.userName ?? '고객',
+        slotDate: r.slotDate,
+        slotTime: r.slotTime,
+        headcount: r.headcount,
+        status: r.status,
+      })));
+    } else {
+      setReservations([]);
+      if (reservationsRes.reason instanceof Error) {
+        console.error('예약 목록 조회 실패:', reservationsRes.reason.message);
+      }
     }
   }, []);
 
@@ -169,6 +200,47 @@ export default function OwnerPage() {
       setSession(s => s ? { ...s, currentCount: Math.max(0, s.currentCount - 1) } : s);
     } catch (err) {
       alert(err instanceof Error ? err.message : '입장 처리에 실패했습니다.');
+    }
+  }
+
+  async function approveReservation(token: string) {
+    try {
+      await apiFetch(`/owner/reservations/${token}/approve`, { method: 'PATCH' });
+      setReservations(prev => prev.map(r => r.reservationToken === token ? { ...r, status: 'CONFIRMED' } : r));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '승인 처리에 실패했습니다.');
+    }
+  }
+
+  async function rejectReservation(token: string, reason: string) {
+    try {
+      await apiFetch(`/owner/reservations/${token}/reject`, {
+        method: 'PATCH',
+        body: JSON.stringify({ reason }),
+      });
+      setReservations(prev => prev.map(r => r.reservationToken === token ? { ...r, status: 'REJECTED' } : r));
+      setRejectingToken(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '거부 처리에 실패했습니다.');
+    }
+  }
+
+  async function markVisited(token: string) {
+    try {
+      await apiFetch(`/owner/reservations/${token}/visit`, { method: 'PATCH' });
+      setReservations(prev => prev.map(r => r.reservationToken === token ? { ...r, status: 'VISITED' } : r));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '방문완료 처리에 실패했습니다.');
+    }
+  }
+
+  async function markNoShow(token: string) {
+    if (!confirm('노쇼 처리하시겠어요?')) return;
+    try {
+      await apiFetch(`/owner/reservations/${token}/noshow`, { method: 'PATCH' });
+      setReservations(prev => prev.map(r => r.reservationToken === token ? { ...r, status: 'NO_SHOW' } : r));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '노쇼 처리에 실패했습니다.');
     }
   }
 
@@ -467,15 +539,17 @@ export default function OwnerPage() {
         {/* 예약 탭 */}
         {tab === 'reservation' && (
           <section>
-            {reservations.length === 0 ? (
+            {dataLoading ? (
+              <div className="spinner" />
+            ) : reservations.length === 0 ? (
               <div className="empty-state card-base" style={{ background: '#fff' }}>
-                <p>오늘 예약이 없습니다.</p>
+                <p>예약 내역이 없습니다.</p>
               </div>
             ) : (
               <div style={{ display: 'grid', gap: '14px' }}>
                 {reservations.map(reservation => (
                   <article
-                    key={reservation.reservationId}
+                    key={reservation.reservationToken}
                     className="card-base"
                     style={{ background: '#fff', padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}
                   >
@@ -485,9 +559,59 @@ export default function OwnerPage() {
                         <span className={`tag ${STATUS_CLASS[reservation.status]}`}>{STATUS_LABEL[reservation.status]}</span>
                       </div>
                       <p style={{ color: 'var(--muted)', fontSize: '14px', fontWeight: 700, marginTop: '6px' }}>
-                        {reservation.slotTime} · {reservation.headcount}명
+                        📅 {reservation.slotDate} · 🕐 {reservation.slotTime} · 👥 {reservation.headcount}명
                       </p>
                     </div>
+                    {reservation.status === 'PENDING' && (
+                      rejectingToken === reservation.reservationToken ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 200 }}>
+                          <select value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+                            style={{ padding: '6px 10px', border: '2px solid var(--ink)', borderRadius: 8, fontFamily: 'inherit', fontWeight: 700, fontSize: '0.82rem' }}>
+                            <option value="SLOT_FULL">예약이 마감됐습니다</option>
+                            <option value="STORE_CLOSED">매장 사정으로 운영 불가</option>
+                            <option value="PARTY_SIZE_UNAVAILABLE">요청 인원 수용 불가</option>
+                            <option value="SPECIAL_EVENT">단체 행사로 좌석 부족</option>
+                            <option value="OTHER">기타 사유</option>
+                          </select>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button type="button" className="btn btn-sm"
+                              style={{ background: 'var(--tomato)', color: '#fff', border: '2px solid var(--ink)', flex: 1 }}
+                              onClick={() => void rejectReservation(reservation.reservationToken, rejectReason)}>
+                              거부 확인
+                            </button>
+                            <button type="button" className="btn btn-white btn-sm"
+                              onClick={() => setRejectingToken(null)}>
+                              취소
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button type="button" className="btn btn-amber btn-sm"
+                            onClick={() => void approveReservation(reservation.reservationToken)}>
+                            승인
+                          </button>
+                          <button type="button" className="btn btn-sm"
+                            style={{ background: '#fff', border: '2px solid var(--tomato)', color: 'var(--tomato)' }}
+                            onClick={() => { setRejectingToken(reservation.reservationToken); setRejectReason('SLOT_FULL'); }}>
+                            거부
+                          </button>
+                        </div>
+                      )
+                    )}
+                    {reservation.status === 'CONFIRMED' && (
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button type="button" className="btn btn-amber btn-sm"
+                          onClick={() => void markVisited(reservation.reservationToken)}>
+                          방문완료
+                        </button>
+                        <button type="button" className="btn btn-sm"
+                          style={{ background: '#f5f5f5', border: '2px solid var(--ink)', color: '#666' }}
+                          onClick={() => void markNoShow(reservation.reservationToken)}>
+                          노쇼
+                        </button>
+                      </div>
+                    )}
                   </article>
                 ))}
               </div>
