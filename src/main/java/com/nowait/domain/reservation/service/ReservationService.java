@@ -11,12 +11,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import org.springframework.data.redis.core.StringRedisTemplate;
-
-import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.domain.reservation.dto.RejectReservationRequest;
 import com.nowait.domain.reservation.dto.ReservationCreateRequest;
 import com.nowait.domain.reservation.dto.ReservationResponse;
@@ -25,7 +23,6 @@ import com.nowait.domain.reservation.redis.ReservationRedisKeys;
 import com.nowait.domain.reservation.redis.ReservationRedisLuaExecutor;
 import com.nowait.domain.reservation.redis.ReservationTokenData;
 import com.nowait.domain.reservation.repository.ReservationRepository;
-import com.nowait.domain.reservation.type.RejectionReason;
 import com.nowait.domain.reservation.type.ReservationStatus;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.entity.RestaurantHour;
@@ -35,6 +32,7 @@ import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.slot.entity.Slot;
 import com.nowait.domain.slot.repository.SlotRepository;
+import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
