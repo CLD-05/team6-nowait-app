@@ -12,7 +12,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Checkout
+      - name: Checkoutmain
         uses: actions/checkout@v4
       # 💡 Dockerfile 내부에서 멀티 스테이지 빌드로 Maven 패키징을 수행하므로, 
       # CI 러너 자체에서의 중복 Java 세팅 및 mvn package 스텝은 제거하여 빌드 타임을 단축합니다.
@@ -50,7 +50,7 @@ jobs:
           cd nowait-config
           
           # deployment.yaml 파일 내 이미지 정보 치환
-          sed -i "s|image:.*|image: $IMAGE_URI|" envs/$CONFIG_ENV/nowait-api/deployment.yaml
+          sed -i "s|image:.*|image: $IMAGE_URI|" apps/$CONFIG_ENV/deployment.yaml
           
           git config user.email "github-actions@github.com"
           git config user.name "github-actions"
