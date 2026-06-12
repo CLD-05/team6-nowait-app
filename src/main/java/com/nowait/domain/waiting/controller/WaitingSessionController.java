@@ -19,14 +19,14 @@ public class WaitingSessionController {
   private final WaitingSessionService waitingSessionService;
 
   /* 사용자: 세션 현황 조회 */
-  @GetMapping("/api/restaurants/{restaurantId}/waiting-session")
+  @GetMapping("/api/v1/restaurants/{restaurantId}/waiting-session")
   public ResponseEntity<WaitingSessionResponse> getTodaySession(@PathVariable Long restaurantId) {
     return ResponseEntity.ok(waitingSessionService.getTodaySession(restaurantId));
   }
 
   /* 점주: 세션 오픈 */
   @PreAuthorize("hasRole('OWNER')")
-  @PostMapping("/api/owners/restaurants/{restaurantId}/waiting-sessions")
+  @PostMapping("/api/v1/owners/restaurants/{restaurantId}/waiting-sessions")
   public ResponseEntity<WaitingSessionResponse> openSession(
       @PathVariable Long restaurantId,
       @AuthenticationPrincipal CustomUserDetails principal,
@@ -38,7 +38,7 @@ public class WaitingSessionController {
 
   /* 점주: 일시정지 */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting-sessions/{sessionId}/pause")
+  @PatchMapping("/api/v1/owners/waiting-sessions/{sessionId}/pause")
   public ResponseEntity<WaitingSessionResponse> pauseSession(
       @PathVariable Long sessionId,
       @AuthenticationPrincipal CustomUserDetails principal) {
@@ -47,7 +47,7 @@ public class WaitingSessionController {
 
   /* 점주: 재개 */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting-sessions/{sessionId}/resume")
+  @PatchMapping("/api/v1/owners/waiting-sessions/{sessionId}/resume")
   public ResponseEntity<WaitingSessionResponse> resumeSession(
       @PathVariable Long sessionId,
       @AuthenticationPrincipal CustomUserDetails principal) {
@@ -56,7 +56,7 @@ public class WaitingSessionController {
 
   /* 점주: 마감 */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting-sessions/{sessionId}/close")
+  @PatchMapping("/api/v1/owners/waiting-sessions/{sessionId}/close")
   public ResponseEntity<WaitingSessionResponse> closeSession(
       @PathVariable Long sessionId,
       @AuthenticationPrincipal CustomUserDetails principal) {

@@ -51,4 +51,22 @@ public class ReservationLuaScripts {
     script.setResultType(List.class);
     return script;
   }
+
+  @Bean("reservationApproveScript")
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  public RedisScript<List> reservationApproveScript() {
+    DefaultRedisScript script = new DefaultRedisScript<>();
+    script.setLocation(new ClassPathResource("lua/reservation/approve.lua"));
+    script.setResultType(List.class);
+    return script;
+  }
+
+  @Bean("reservationRejectScript")
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  public RedisScript<List> reservationRejectScript() {
+    DefaultRedisScript script = new DefaultRedisScript<>();
+    script.setLocation(new ClassPathResource("lua/reservation/reject.lua"));
+    script.setResultType(List.class);
+    return script;
+  }
 }

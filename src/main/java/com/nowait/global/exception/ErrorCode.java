@@ -9,7 +9,7 @@ public enum ErrorCode {
     // 400 Bad Request
 	RESTAURANT_NOT_OPEN(HttpStatus.BAD_REQUEST, "R400", "현재 매장이 영업 중(OPEN) 상태가 아닙니다."),
 	WAITING_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "W400", "현재 매장이 웨이팅 기능을 제공하지 않는 상태입니다."),
-	RESTAURANT_CLOSED_DAY(HttpStatus.BAD_REQUEST, "RH400", "해당 날짜는 식당의 정기 휴무일입니다."),
+	RESTAURANT_CLOSED_DAY(HttpStatus.BAD_REQUEST, "RH400", "해당 날짜는 정기 휴무일입니다."),
     NOT_OPERATING_TIME(HttpStatus.BAD_REQUEST, "RH401", "식당 영업시간 외에는 예약이 불가능합니다."),
 	RESERVATION_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "RV400", "현재 매장이 예약 기능을 제공하지 않는 상태입니다."),
 	INVALID_MIN_HEADCOUNT(HttpStatus.BAD_REQUEST, "RV401", "예약 최소 인원보다 적은 인원입니다."),
@@ -22,6 +22,7 @@ public enum ErrorCode {
 
     // 401 Unauthorized
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "A401", "이메일 또는 비밀번호가 일치하지 않습니다."),
+    USER_WITHDRAWN(HttpStatus.UNAUTHORIZED, "A403", "탈퇴한 계정입니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "A402", "유효하지 않은 토큰입니다."),
     EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "A403", "만료된 토큰입니다."),
     INVALID_SSE_TICKET(HttpStatus.UNAUTHORIZED, "SSE401", "유효하지 않거나 만료된 SSE 티켓입니다."),
@@ -38,11 +39,12 @@ public enum ErrorCode {
     RESTAURANT_NOT_FOUND(HttpStatus.NOT_FOUND, "R404", "식당을 찾을 수 없습니다."),
     SLOT_NOT_FOUND(HttpStatus.NOT_FOUND, "SL404", "슬롯을 찾을 수 없습니다."),
     RESERVATION_NOT_FOUND(HttpStatus.NOT_FOUND, "RS404", "예약을 찾을 수 없습니다."),
+    RESERVATION_SYNC_IN_PROGRESS(HttpStatus.ACCEPTED, "RS202", "예약 정보가 저장 중입니다. 잠시 후 다시 시도해주세요."),
     WAITING_NOT_FOUND(HttpStatus.NOT_FOUND, "W404", "웨이팅을 찾을 수 없습니다."),
     WAITING_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "WS404", "운영 중인 웨이팅 세션이 없습니다."),
     REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "RV404", "리뷰를 찾을 수 없습니다."),
     NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "N404", "알림을 찾을 수 없습니다."),
-    OPERATING_INFO_NOT_FOUND(HttpStatus.NOT_FOUND, "RH404", "해당 식당의 요일별 영업시간 정보가 존재하지 않습니다."),
+    OPERATING_INFO_NOT_FOUND(HttpStatus.NOT_FOUND, "RH404", "해당 식당의 영업시간이 설정되지 않았습니다. 매장 관리에서 영업시간을 먼저 설정해주세요."),
 
     // 409 Conflict
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U409", "이미 사용 중인 이메일입니다."),
@@ -51,7 +53,8 @@ public enum ErrorCode {
     DUPLICATE_RESERVATION(HttpStatus.CONFLICT, "RS409", "이미 해당 슬롯에 예약이 존재합니다."),
     ALREADY_CANCELLED_RESERVATION(HttpStatus.CONFLICT, "RS410", "이미 취소된 예약입니다."),
     CANNOT_CANCEL_RESERVATION(HttpStatus.CONFLICT, "RS411", "취소할 수 없는 예약 상태입니다."),
-    DUPLICATE_WAITING(HttpStatus.CONFLICT, "W409", "이미 해당 식당의 웨이팅이 등록되어 있습니다."),
+    RESERVATION_ALREADY_REJECTED(HttpStatus.CONFLICT, "RS412", "이미 거부된 예약입니다."),
+    DUPLICATE_WAITING(HttpStatus.CONFLICT, "W409", "이미 웨이팅이 등록되어 있습니다. 기존 웨이팅을 취소 후 다시 시도해주세요."),
     WAITING_COUNT_EXCEEDED(HttpStatus.CONFLICT, "W410", "웨이팅 최대 팀 수를 초과했습니다."),
     ALREADY_PROCESSED_WAITING(HttpStatus.CONFLICT, "W411", "이미 처리된 웨이팅입니다."),
     WAITING_SESSION_ALREADY_EXISTS(HttpStatus.CONFLICT, "WS409", "오늘 이미 오픈된 세션이 있습니다."),

@@ -256,7 +256,10 @@ public class WaitingRedisLuaExecutor {
   }
 
   private BusinessException mapError(List<?> result, String op) {
-    String code = result.size() > 1 ? String.valueOf(result.get(1)) : "UNKNOWN";
+    String code = "UNKNOWN";
+    if (result != null && result.size() > 1) {
+      code = toStr(result.get(1));
+    }
     log.warn("Waiting Lua [{}] failed: {}", op, code);
 
     return switch (code) {
@@ -271,8 +274,15 @@ public class WaitingRedisLuaExecutor {
   }
 
   private int parseInt(Object o) {
+    if (o == null) return 0;
     if (o instanceof Number n) return n.intValue();
-    return Integer.parseInt(String.valueOf(o));
+    return Integer.parseInt(toStr(o));
+  }
+
+  /* StringRedisTemplate은 Lua bulk-string 반환값을 byte[]로 줄 수 있음 — 안전하게 String 변환 */
+  private String toStr(Object o) {
+    if (o instanceof byte[] bytes) return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+    return String.valueOf(o);
   }
 
   /* 등록 성공 시 반환 */

@@ -77,6 +77,14 @@ public class SlotService {
         return SlotResponse.SlotInfo.from(slot);
     }
 
+    // 슬롯 삭제 (점주 전용)
+    @Transactional
+    public void deleteSlot(Long slotId) {
+        Slot slot = slotRepository.findById(slotId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.SLOT_NOT_FOUND));
+        slotRepository.delete(slot);
+    }
+
     // 잔여 수 감소 (예약 생성 시 호출)
     @Transactional
     public void decrease(Long slotId) {

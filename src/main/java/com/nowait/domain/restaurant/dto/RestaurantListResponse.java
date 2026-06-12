@@ -2,6 +2,7 @@ package com.nowait.domain.restaurant.dto;
 
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.type.RestaurantCategory;
+import com.nowait.domain.restaurant.type.RestaurantStatus;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -16,6 +17,9 @@ public class RestaurantListResponse {
 	private String address;
 	private String imageUrl;
 	private String mainMenuName;
+	private RestaurantStatus status;
+	private String reservationAvailable;
+	private String waitingAvailable;
 	
 	public static RestaurantListResponse from(Restaurant restaurant) {
 		return new RestaurantListResponse(
@@ -24,7 +28,10 @@ public class RestaurantListResponse {
 				restaurant.getCategory(),
 				restaurant.getAddress(),
 				restaurant.getImageUrl(),
-				restaurant.getMainMenuName()
+				restaurant.getMainMenuName(),
+				restaurant.getStatus(),
+				restaurant.getReservationAvailable(),
+				restaurant.getWaitingAvailable()
 				);
 	}
 }

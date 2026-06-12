@@ -21,8 +21,8 @@ public class WaitingController {
   private final WaitingService waitingService;
 
   /* 사용자: 웨이팅 등록 */
-  @PreAuthorize("hasRole('USER')")
-  @PostMapping("/api/restaurants/{restaurantId}/waitings")
+  @PreAuthorize("hasAnyRole('USER', 'OWNER')")
+  @PostMapping("/api/v1/restaurants/{restaurantId}/waitings")
   public ResponseEntity<WaitingResponse> register(
       @PathVariable Long restaurantId,
       @AuthenticationPrincipal CustomUserDetails principal,
@@ -32,15 +32,25 @@ public class WaitingController {
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
-  /* 사용자: 내 활성 웨이팅 목록 조회 (여러 식당 동시 등록 가능) */
-  @GetMapping("/api/waitings/me")
-  public ResponseEntity<List<WaitingResponse>> getMyWaitings(
+  /* 사용자: 내 웨이팅 조회 (단건 — WaitingStatusPage 용) */
+  @PreAuthorize("isAuthenticated()")
+  @GetMapping("/api/v1/waitings/me")
+  public ResponseEntity<WaitingResponse> getMyWaiting(
       @AuthenticationPrincipal CustomUserDetails principal) {
     return ResponseEntity.ok(waitingService.getMyWaitings(principal.getUserId()));
   }
 
+  /* 사용자: 내 웨이팅 전체 이력 조회 (마이페이지 탭 용) */
+  @PreAuthorize("isAuthenticated()")
+  @GetMapping("/api/v1/waitings/me/history")
+  public ResponseEntity<List<WaitingResponse>> getMyWaitingHistory(
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    return ResponseEntity.ok(waitingService.getMyWaitingHistory(principal.getUserId()));
+  }
+
   /* 사용자: 내 웨이팅 취소 (토큰 기반) */
-  @PatchMapping("/api/waitings/{token}/cancel")
+  @PreAuthorize("isAuthenticated()")
+  @PatchMapping("/api/v1/waitings/{token}/cancel")
   public ResponseEntity<WaitingResponse> cancelMyWaiting(
       @PathVariable String token,
       @AuthenticationPrincipal CustomUserDetails principal) {
@@ -49,7 +59,7 @@ public class WaitingController {
 
   /* 점주: 식당의 웨이팅 목록 조회 */
   @PreAuthorize("hasRole('OWNER')")
-  @GetMapping("/api/owners/restaurants/{restaurantId}/waitings")
+  @GetMapping("/api/v1/owners/restaurants/{restaurantId}/waitings")
   public ResponseEntity<List<WaitingResponse>> getOwnerWaitings(
       @PathVariable Long restaurantId,
       @AuthenticationPrincipal CustomUserDetails principal) {
@@ -57,20 +67,20 @@ public class WaitingController {
   }
 
   /* 점주: 호출 (토큰 기반) */
-@PreAuthorize("hasRole('OWNER')")
-@PatchMapping(value = {
-    "/api/owners/waiting/{token}/call",
-    "/api/owners/waiting/{token}/recall"
-})
-public ResponseEntity<WaitingResponse> call(
-    @PathVariable String token,
-    @AuthenticationPrincipal CustomUserDetails principal) {
-  return ResponseEntity.ok(waitingService.call(token, principal.getUserId()));
-}
+  @PreAuthorize("hasRole('OWNER')")
+  @PatchMapping(value = {
+      "/api/v1/owners/waitings/{token}/call",
+      "/api/v1/owners/waitings/{token}/recall"
+  })
+  public ResponseEntity<WaitingResponse> call(
+      @PathVariable String token,
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    return ResponseEntity.ok(waitingService.call(token, principal.getUserId()));
+  }
 
   /* 점주: 취소 처리 (토큰 기반) */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting/{token}/cancelled")
+  @PatchMapping("/api/v1/owners/waitings/{token}/cancelled")
   public ResponseEntity<WaitingResponse> cancelByOwner(
       @PathVariable String token,
       @AuthenticationPrincipal CustomUserDetails principal) {
@@ -79,7 +89,7 @@ public ResponseEntity<WaitingResponse> call(
 
   /* 점주: 입장 처리 (토큰 기반) */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting/{token}/enter")
+  @PatchMapping("/api/v1/owners/waitings/{token}/enter")
   public ResponseEntity<WaitingResponse> enter(
       @PathVariable String token,
       @AuthenticationPrincipal CustomUserDetails principal) {
@@ -88,7 +98,7 @@ public ResponseEntity<WaitingResponse> call(
 
   /* 점주: 입장 완료 처리 (현재 enter 와 동일 동작) */
   @PreAuthorize("hasRole('OWNER')")
-  @PatchMapping("/api/owners/waiting/{token}/entered")
+  @PatchMapping("/api/v1/owners/waitings/{token}/entered")
   public ResponseEntity<WaitingResponse> entered(
       @PathVariable String token,
       @AuthenticationPrincipal CustomUserDetails principal) {

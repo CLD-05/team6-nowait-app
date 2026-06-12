@@ -21,7 +21,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/owners")
+@RequestMapping("/api/v1/owners")
 @RequiredArgsConstructor
 public class OwnerController {
 	

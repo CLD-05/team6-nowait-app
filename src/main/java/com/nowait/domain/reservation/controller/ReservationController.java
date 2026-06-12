@@ -1,5 +1,6 @@
 package com.nowait.domain.reservation.controller;
 
+import com.nowait.domain.reservation.dto.RejectReservationRequest;
 import com.nowait.domain.reservation.dto.ReservationCreateRequest;
 import com.nowait.domain.reservation.dto.ReservationResponse;
 import com.nowait.domain.reservation.service.ReservationService;
@@ -51,6 +52,16 @@ public class ReservationController {
             reservationService.getReservation(userDetails.getUserId(), token));
     }
 
+    /* DELETE /api/v1/reservations/{token} — 예약 내역 삭제 (취소·노쇼 상태만) */
+    @DeleteMapping("/reservations/{token}")
+    public ResponseEntity<Void> deleteReservation(
+        @AuthenticationPrincipal CustomUserDetails userDetails,
+        @PathVariable String token
+    ) {
+        reservationService.deleteReservation(userDetails.getUserId(), token);
+        return ResponseEntity.noContent().build();
+    }
+
     /* PATCH /api/v1/reservations/{token}/cancel — 예약 취소 (본인) */
     @PatchMapping("/reservations/{token}/cancel")
     public ResponseEntity<ReservationResponse> cancelReservation(
@@ -62,6 +73,40 @@ public class ReservationController {
     }
 
     // ========== 점주 전용 API ==========
+
+    /* GET /api/v1/owner/restaurants/{restaurantId}/reservations — 식당 예약 목록 */
+    @PreAuthorize("hasRole('OWNER')")
+    @GetMapping("/owner/restaurants/{restaurantId}/reservations")
+    public ResponseEntity<List<ReservationResponse>> getRestaurantReservations(
+        @AuthenticationPrincipal CustomUserDetails userDetails,
+        @PathVariable Long restaurantId
+    ) {
+        return ResponseEntity.ok(
+            reservationService.getRestaurantReservations(userDetails.getUserId(), restaurantId));
+    }
+
+    /* PATCH /api/v1/owner/reservations/{token}/approve — 예약 승인 */
+    @PreAuthorize("hasRole('OWNER')")
+    @PatchMapping("/owner/reservations/{token}/approve")
+    public ResponseEntity<ReservationResponse> approveReservation(
+        @AuthenticationPrincipal CustomUserDetails userDetails,
+        @PathVariable String token
+    ) {
+        return ResponseEntity.ok(
+            reservationService.approveReservation(userDetails.getUserId(), token));
+    }
+
+    /* PATCH /api/v1/owner/reservations/{token}/reject — 예약 거부 */
+    @PreAuthorize("hasRole('OWNER')")
+    @PatchMapping("/owner/reservations/{token}/reject")
+    public ResponseEntity<ReservationResponse> rejectReservation(
+        @AuthenticationPrincipal CustomUserDetails userDetails,
+        @PathVariable String token,
+        @Valid @RequestBody RejectReservationRequest request
+    ) {
+        return ResponseEntity.ok(
+            reservationService.rejectReservation(userDetails.getUserId(), token, request));
+    }
 
     /* PATCH /api/v1/owner/reservations/{token}/visit — 방문 완료 */
     @PreAuthorize("hasRole('OWNER')")

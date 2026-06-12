@@ -21,7 +21,7 @@ public class NotificationController {
      * 내 알림 목록 (인증 필요)
      * - ?unread=true 면 안 읽은 알림만
      */
-    @GetMapping("/api/notifications/me")
+    @GetMapping("/api/v1/notifications/me")
     public ResponseEntity<List<NotificationResponse>> getMyNotifications(
         @AuthenticationPrincipal CustomUserDetails userDetails,
         @RequestParam(name = "unread", defaultValue = "false") boolean unreadOnly
@@ -35,7 +35,7 @@ public class NotificationController {
      * PATCH /api/notifications/{notificationId}/read
      * 알림 읽음 처리 (본인만)
      */
-    @PatchMapping("/api/notifications/{notificationId}/read")
+    @PatchMapping("/api/v1/notifications/{notificationId}/read")
     public ResponseEntity<Void> markAsRead(
         @AuthenticationPrincipal CustomUserDetails userDetails,
         @PathVariable Long notificationId
@@ -48,7 +48,7 @@ public class NotificationController {
      * PATCH /api/notifications/read-all
      * 전체 읽음 처리 (본인 알림 일괄)
      */
-    @PatchMapping("/api/notifications/read-all")
+    @PatchMapping("/api/v1/notifications/read-all")
     public ResponseEntity<Void> markAllAsRead(
         @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
@@ -60,7 +60,7 @@ public class NotificationController {
      * DELETE /api/notifications/{notificationId}
      * 알림 삭제 (본인만)
      */
-    @DeleteMapping("/api/notifications/{notificationId}")
+    @DeleteMapping("/api/v1/notifications/{notificationId}")
     public ResponseEntity<Void> delete(
         @AuthenticationPrincipal CustomUserDetails userDetails,
         @PathVariable Long notificationId

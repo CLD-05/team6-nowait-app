@@ -1,6 +1,7 @@
 package com.nowait.domain.waiting.service;
 
-import com.nowait.domain.owner.repository.RestaurantOwnerRepository;
+import com.nowait.domain.restaurant.entity.Restaurant;
+import com.nowait.domain.restaurant.repository.RestaurantRepository;
 import com.nowait.domain.waiting.dto.WaitingSessionOpenRequest;
 import com.nowait.domain.waiting.dto.WaitingSessionResponse;
 import com.nowait.domain.waiting.entity.WaitingSession;
@@ -23,7 +24,7 @@ import java.time.LocalDateTime;
 public class WaitingSessionService {
 
   private final WaitingSessionRepository waitingSessionRepository;
-  private final RestaurantOwnerRepository restaurantOwnerRepository;
+  private final RestaurantRepository restaurantRepository;
   private final WaitingRedisLuaExecutor waitingRedis;
 
   public WaitingSessionResponse getTodaySession(Long restaurantId) {
@@ -88,7 +89,9 @@ public class WaitingSessionService {
   }
 
   private void verifyOwnership(Long restaurantId, Long loginUserId) {
-    if (!restaurantOwnerRepository.existsByUserIdAndRestaurantId(loginUserId, restaurantId)) {
+    Restaurant restaurant = restaurantRepository.findById(restaurantId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+    if (!loginUserId.equals(restaurant.getOwnerId())) {
       throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
     }
   }

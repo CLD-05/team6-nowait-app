@@ -13,6 +13,9 @@ public class FavoriteResponse {
 	private final Long restaurantId;
 	private final String restaurantName;
 	private final String mainCategory;
+	private final String category;
+	private final String mainMenuName;
+	private final String imageUrl;
 	private final LocalDateTime createdAt;
 	
 	public FavoriteResponse(Favorite favorite) {
@@ -21,6 +24,9 @@ public class FavoriteResponse {
 		this.restaurantId = favorite.getRestaurant().getId();
 		this.restaurantName = favorite.getRestaurant().getName();
 		this.mainCategory = favorite.getRestaurant().getCategory().name();
+		this.category = favorite.getRestaurant().getCategory().name();
+		this.mainMenuName = favorite.getRestaurant().getMainMenuName();
+		this.imageUrl = favorite.getRestaurant().getImageUrl();
 		this.createdAt = favorite.getCreatedAt();
 	}
 

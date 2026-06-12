@@ -52,4 +52,7 @@ public interface WaitingRepository extends JpaRepository<Waiting, Long> {
 
   /* Worker: token 으로 기존 행 조회 (idempotent upsert 의 키) */
   Optional<Waiting> findByWaitingToken(String waitingToken);
+
+  /* 마이페이지: 사용자의 전체 웨이팅 이력 (최신순) */
+  List<Waiting> findByUserIdOrderByRegisteredAtDesc(Long userId);
 }
