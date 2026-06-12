@@ -109,7 +109,7 @@ public class ReservationService {
         if (headcount < slot.getMinHeadcount()) {
             throw new BusinessException(ErrorCode.INVALID_MIN_HEADCOUNT);
         }
-        if (slot.getMaxHeadcount() != null && headcount > slot.getMaxHeadcount()) {
+        if (headcount > slot.getMaxHeadcount()) {
             throw new BusinessException(ErrorCode.INVALID_MAX_HEADCOUNT);
         }
 

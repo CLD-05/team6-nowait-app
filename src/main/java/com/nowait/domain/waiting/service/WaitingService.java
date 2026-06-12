@@ -167,17 +167,19 @@ public class WaitingService {
    * 사용자: 내 활성 웨이팅 조회
    * GET /api/waitings/me
    */
-  public WaitingResponse getMyWaiting(Long loginUserId) {
-    String token = waitingRedis.findActiveTokenOf(loginUserId);
-    if (token == null) {
-      throw new BusinessException(ErrorCode.WAITING_NOT_FOUND);
-    }
-    WaitingTokenData data = waitingRedis.findByToken(token);
-    if (data == null) {
-      throw new BusinessException(ErrorCode.WAITING_NOT_FOUND);
-    }
-    long ahead = waitingRedis.aheadCount(data.sessionId(), token);
-    return WaitingResponse.of(token, data, ahead);
+  public List<WaitingResponse> getMyWaitings(Long loginUserId) {
+    List<String> tokens = waitingRedis.findActiveTokensOf(loginUserId);
+    if (tokens.isEmpty()) return List.of();
+
+    return tokens.stream()
+        .map(token -> {
+          WaitingTokenData data = waitingRedis.findByToken(token);
+          if (data == null) return null;
+          long ahead = waitingRedis.aheadCount(data.sessionId(), token);
+          return WaitingResponse.of(token, data, ahead);
+        })
+        .filter(Objects::nonNull)
+        .toList();
   }
 
   /*
@@ -188,7 +190,7 @@ public class WaitingService {
   public WaitingResponse cancelByUser(String token, Long loginUserId) {
     WaitingTokenData data = findTokenDataOrThrow(token);
 
-    waitingRedis.cancel(token, loginUserId, data.sessionId());
+    waitingRedis.cancel(token, loginUserId, data.sessionId(), data.restaurantId());
     log.info("Waiting cancelled by user. token={}, userId={}", token, loginUserId);
 
     notifyNearCallIfThreshold(data.sessionId());
@@ -272,7 +274,7 @@ public class WaitingService {
     WaitingTokenData data = findTokenDataOrThrow(token);
     verifyOwnership(data.restaurantId(), loginUserId);
 
-    waitingRedis.cancelByOwner(token, data.sessionId(), data.userId());
+    waitingRedis.cancelByOwner(token, data.sessionId(), data.userId(), data.restaurantId());
     log.info("Waiting cancelled by owner. token={}", token);
 
     notifyNearCallIfThreshold(data.sessionId());
@@ -291,7 +293,7 @@ public class WaitingService {
     WaitingTokenData data = findTokenDataOrThrow(token);
     verifyOwnership(data.restaurantId(), loginUserId);
 
-    waitingRedis.enter(token, data.sessionId(), data.userId());
+    waitingRedis.enter(token, data.sessionId(), data.userId(), data.restaurantId());
     log.info("Waiting entered. token={}", token);
 
     notifyNearCallIfThreshold(data.sessionId());
