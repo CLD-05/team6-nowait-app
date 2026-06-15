@@ -1,0 +1,141 @@
+name: Backend Prod Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      dev_image_tag:
+        description: "승격할 dev 이미지 태그 예: dev-a1b2c3d"
+        required: true
+        type: string
+      prod_image_tag:
+        description: "prod 이미지 태그. 비우면 prod-<sha>로 자동 생성"
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  CONFIG_REPO: ${{ vars.CONFIG_REPO }}
+
+jobs:
+  verify-dev-image:
+    name: 1. Verify dev image
+    runs-on: ubuntu-latest
+
+    environment: development
+
+    outputs:
+      dev_image_tag: ${{ steps.image.outputs.dev_image_tag }}
+      prod_image_tag: ${{ steps.image.outputs.prod_image_tag }}
+
+    steps:
+      - name: Configure AWS credentials for dev
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEV_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set image variables
+        id: image
+        run: |
+          DEV_IMAGE_TAG="${{ inputs.dev_image_tag }}"
+
+          if [ -n "${{ inputs.prod_image_tag }}" ]; then
+            PROD_IMAGE_TAG="${{ inputs.prod_image_tag }}"
+          else
+            PROD_IMAGE_TAG="${DEV_IMAGE_TAG/dev-/prod-}"
+          fi
+
+          echo "dev_image_tag=${DEV_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "prod_image_tag=${PROD_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Check dev image exists in ECR
+        run: |
+          aws ecr describe-images \
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-ids imageTag="${{ steps.image.outputs.dev_image_tag }}"
+
+  promote-and-update-prod:
+    name: 2. Promote image and update prod config
+    runs-on: ubuntu-latest
+    needs:
+      - verify-dev-image
+
+    environment: production
+
+    steps:
+      - name: Configure AWS credentials for prod
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PROD_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Retag dev image as prod image
+        run: |
+          MANIFEST=$(aws ecr batch-get-image \
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-ids imageTag="${{ needs.verify-dev-image.outputs.dev_image_tag }}" \
+            --query 'images[0].imageManifest' \
+            --output text)
+
+          if [ "$MANIFEST" = "None" ] || [ -z "$MANIFEST" ]; then
+            echo "Dev image tag not found: ${{ needs.verify-dev-image.outputs.dev_image_tag }}"
+            exit 1
+          fi
+
+          aws ecr put-image \
+            --repository-name "${ECR_REPOSITORY}" \
+            --image-tag "${{ needs.verify-dev-image.outputs.prod_image_tag }}" \
+            --image-manifest "$MANIFEST"
+
+      - name: Checkout config repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CONFIG_REPO }}
+          token: ${{ secrets.CONFIG_REPO_TOKEN }}
+          path: config-repo
+          ref: main
+
+      - name: Update prod image tags
+        working-directory: config-repo
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          image_tag = "${{ needs.verify-dev-image.outputs.prod_image_tag }}"
+
+          files = [
+              Path("envs/prod/api-values.yaml"),
+              Path("envs/prod/worker-values.yaml"),
+          ]
+
+          for file in files:
+              if not file.exists():
+                  raise FileNotFoundError(f"{file} not found")
+
+              text = file.read_text(encoding="utf-8")
+              text = re.sub(r'tag:\s*"?[^"\n]+"?', f'tag: "{image_tag}"', text)
+              file.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit and push prod config changes
+        working-directory: config-repo
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add envs/prod/api-values.yaml envs/prod/worker-values.yaml
+
+          if git diff --cached --quiet; then
+            echo "No prod config changes."
+            exit 0
+          fi
+
+          git commit -m "prod 이미지 태그 승격: ${{ needs.verify-dev-image.outputs.prod_image_tag }}"
+          git push origin main
