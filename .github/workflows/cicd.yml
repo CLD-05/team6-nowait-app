@@ -46,11 +46,13 @@ jobs:
         env:
           IMAGE_URI: ${{ steps.build-image.outputs.image_uri }}
         run: |
-          git clone https://x-access-token:${{ secrets.CONFIG_REPO_TOKEN }}@github.com/${{ github.repository_owner }}/nowait-config.git
-          cd nowait-config
+          git clone https://x-access-token:${{ secrets.CONFIG_REPO_TOKEN }}@github.com/${{ github.repository_owner }}/team6-nowait-config.git
+          cd team6-nowait-config
           
-          # deployment.yaml 파일 내 이미지 정보 치환
-          sed -i "s|image:.*|image: $IMAGE_URI|" envs/$CONFIG_ENV/nowait-api/deployment.yaml
+          # deployment.yaml 수정 (새 Helm 차트 구조 반영)
+          sed -i "s|tag:.*|tag: \"${{ github.sha }}\"|" envs/$CONFIG_ENV/api-values.yaml
+          sed -i "s|tag:.*|tag: \"${{ github.sha }}\"|" envs/$CONFIG_ENV/worker-values.yaml
+
           
           git config user.email "github-actions@github.com"
           git config user.name "github-actions"
