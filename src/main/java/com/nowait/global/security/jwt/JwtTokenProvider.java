@@ -1,6 +1,15 @@
 package com.nowait.global.security.jwt;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+
+import javax.crypto.SecretKey;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
 import com.nowait.domain.user.type.UserRole;
+
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -8,12 +17,6 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
-import java.util.Date;
 
 @Slf4j
 @Component
@@ -80,5 +83,15 @@ public class JwtTokenProvider {
         .build()
         .parseClaimsJws(token)
         .getBody();
+  }
+  
+  public long getRemainingValiditySeconds(String token) {
+	  try {
+		  Date expiration = parse(token).getExpiration();
+		  long diff = expiration.getTime() - System.currentTimeMillis();
+		  return diff > 0 ? diff / 1000 : 0;
+	  } catch (Exception e) {
+		  return 0;
+	  }
   }
 }
