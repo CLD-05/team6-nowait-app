@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { API_BASE, request } from '../lib/api';
 
 const USE_DUMMY = false;
+const STATUS_POLL_MS = 5000;
 
 type WaitingStatus = {
   waitingToken: string;
@@ -93,10 +94,23 @@ export default function WaitingStatusPage() {
 
   // 최초 로드
   useEffect(() => {
-    const token = localStorage.getItem('nowait_token');
-    if (!token) { navigate('/auth'); return; }
+  const token = localStorage.getItem('nowait_token');
+
+  if (!token) {
+    navigate('/auth');
+    return;
+  }
+
+  void fetchStatus();
+
+  const timer = window.setInterval(() => {
     void fetchStatus();
-  }, [fetchStatus, navigate]);
+  }, STATUS_POLL_MS);
+
+  return () => {
+    window.clearInterval(timer);
+  };
+}, [fetchStatus, navigate]);
 
   // SSE 연결 — 웨이팅 상태 변경 시 서버가 push, 폴링 없이 즉시 갱신
   useEffect(() => {
