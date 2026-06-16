@@ -8,6 +8,8 @@ import java.util.stream.Collectors;
 
 import com.nowait.domain.restaurant.type.DayOfWeek;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,7 +28,9 @@ import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -98,7 +102,15 @@ public class RestaurantService {
 				.collect(Collectors.toList());
 	}
 	
+	/**
+     * 🏪 식당 상세 조회 (캐싱 적용)
+     * - 캐시에 데이터가 있으면 MySQL을 건드리지 않고 Redis에서 바로 반환합니다.
+     * - 캐시에 없으면(Cache Miss) 원래대로 MySQL에서 조회한 후, Redis에 저장하고 반환합니다.
+     */
+	@Cacheable(value = "restaurant", key = "#restaurantId", cacheManager = "cacheManager")
 	public RestaurantDetailResponse getRestaurantDetail(Long restaurantId) {
+		log.info("🔍 [MySQL 조회] Redis에 없어서 DB에서 식당 정보를 꺼내옵니다. ID: {}", restaurantId);
+		
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
 		return RestaurantDetailResponse.from(restaurant);
@@ -111,6 +123,7 @@ public class RestaurantService {
 	}
 	
 	@Transactional
+	@CacheEvict(value = "restaurant", key = "#restaurantId", cacheManager = "cacheManager")
 	public void updateRestaurant(Long restaurantId, RestaurantUpdateRequest request, Long ownerId) {
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
@@ -124,9 +137,12 @@ public class RestaurantService {
 				request.getDescription(), request.getImageUrl(), request.getMainMenuName(),
 				request.getParkingAvailable(), request.getWifiAvailable(), request.getMultilingualMenuAvailable(),
 				request.getStatus(), request.getReservationAvailable(), request.getWaitingAvailable());
+		
+		log.info("[Cache Evict] 식당 정보가 수정되어 Redis 캐시를 삭제했습니다. ID: {}", restaurantId);
 	}
 	
 	@Transactional
+	@CacheEvict(value = "restaurant", key = "#restaurantId", cacheManager = "cacheManager")
 	public void updateStatus(Long restaurantId, RestaurantStatus status, Long ownerId) {
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
@@ -134,9 +150,12 @@ public class RestaurantService {
 			throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
 		}
 		restaurant.updateStatus(status);
+		
+		log.info("💥 [Cache Evict] 식당 상태가 변경되어 Redis 캐시를 삭제했습니다. ID: {}", restaurantId);
 	}
 
 	@Transactional
+	@CacheEvict(value = "restaurant", key = "#restaurantId", cacheManager = "cacheManager")
 	public void deleteRestaurant(Long restaurantId, Long ownerId) {
 		
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
@@ -148,10 +167,13 @@ public class RestaurantService {
 		// [주의] 지금은 아직 MySQL에 칼럼을 안 만들었으니, 
         // 나중에 팀원들과 이야기해서 엔티티에 필드 추가하면 아래 주석을 풀어줄 것입니다!
          restaurant.deleteRestaurant();
+         
+         log.info("💥 [Cache Evict] 식당이 삭제되어 Redis 캐시를 파기했습니다. ID: {}", restaurantId);
 	}
 	
 	
 	@Transactional
+	@CacheEvict(value = "restaurant", key = "#restaurantId", cacheManager = "cacheManager")
     public void updateRestaurantImage(Long restaurantId, Long ownerId, String imageUrl) {
         // 식당이 존재하는지 확인
         Restaurant restaurant = restaurantRepository.findById(restaurantId)
@@ -174,6 +196,7 @@ public class RestaurantService {
     }
 
 	@Transactional
+	@CacheEvict(value = "restaurant", key = "#restaurantId", cacheManager = "cacheManager")
     public void deleteRestaurantImage(Long restaurantId, Long ownerId) {
         Restaurant restaurant = restaurantRepository.findById(restaurantId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));

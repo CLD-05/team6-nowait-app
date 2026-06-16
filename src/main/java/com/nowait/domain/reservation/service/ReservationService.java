@@ -28,10 +28,13 @@ import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.entity.RestaurantHour;
 import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
+import com.nowait.domain.restaurant.service.RestaurantService;
 import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.slot.entity.Slot;
 import com.nowait.domain.slot.repository.SlotRepository;
+import com.nowait.domain.slot.service.SlotService;
+import com.nowait.domain.user.entity.User;
 import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
@@ -64,6 +67,9 @@ public class ReservationService {
     private final UserRepository userRepository;
     private final ReservationRedisLuaExecutor reservationRedis;
     private final StringRedisTemplate redisTemplate;
+    // [새로 추가] 최하단 buildFromRedis에서 '캐시 자판기'를 경유하기 위해 추가로 주입합니다!
+    private final RestaurantService restaurantService;
+    private final SlotService slotService;
 
     /* ================== 사용자 ================== */
 
@@ -404,13 +410,22 @@ public class ReservationService {
 
     /* 응답용 — restaurant/slot/user 메타데이터를 DB 에서 조회해서 합쳐줌 */
     private ReservationResponse buildFromRedis(String token, ReservationTokenData data) {
-        String restaurantName = restaurantRepository.findById(data.restaurantId())
-            .map(Restaurant::getName).orElse("매장");
+    	
+    	// 🎯 [개선] DB 직접 조회가 아니라, 우리가 캐싱 처리해둔 RestaurantService의 메서드를 호출합니다!
+        // 이렇게 하면 Redis 캐시(Look-Aside)를 먼저 거치기 때문에 MySQL을 찌르지 않고 0초 만에 식당 이름을 가져옵니다.
+        String restaurantName = restaurantService.getRestaurantDetail(data.restaurantId()).getName();
+        
+        // 👤 유저 정보는 목록 폭주 연타 대상이 아니므로 기존대로 DB에서 가볍게 읽어옵니다.
         String userName = userRepository.findById(data.userId())
-            .map(u -> u.getName()).orElse("고객");
-        Slot slot = slotRepository.findById(data.slotId()).orElse(null);
+            .map(User::getName).orElse("고객");
+        
+        // 🎯 [개선] 레포지토리 직접 조회를 지우고, 캐시 문지기가 있는 slotService를 거치도록 수정합니다!
+        // 이제 슬롯 날짜/시간 정보도 MySQL을 치지 않고 Redis 캐시 자판기에서 쏙 꺼내옵니다. (MySQL 쿼리 X)
+        Slot slot = slotService.getSlotById(data.slotId());
+        
         LocalDate slotDate = slot == null ? null : slot.getSlotDate();
         LocalTime slotTime = slot == null ? null : slot.getSlotTime();
+        
         return ReservationResponse.fromRedis(token, data, restaurantName, userName, slotDate, slotTime);
     }
 

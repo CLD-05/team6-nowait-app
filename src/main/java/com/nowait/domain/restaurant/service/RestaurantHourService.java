@@ -2,6 +2,8 @@ package com.nowait.domain.restaurant.service;
 
 import java.util.List;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,7 +16,9 @@ import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -27,7 +31,11 @@ public class RestaurantHourService {
      * 점주 전용: 요일별 영업시간 설정 (등록 및 수정 통합)
      */
     @Transactional
+    @CacheEvict(value = "restaurant_hours", key = "#restaurantId", cacheManager = "cacheManager")
     public void saveOrUpdateRestaurantHours(Long restaurantId, List<RestaurantHourRequest> requests) {
+    	
+    	log.info("💥 [Cache Evict] 영업시간 설정이 변경되어 Redis 캐시를 삭제합니다. 식당 ID: {}", restaurantId);
+    	
         // 1. 식당 존재 여부 확인
         Restaurant restaurant = restaurantRepository.findById(restaurantId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
@@ -60,7 +68,10 @@ public class RestaurantHourService {
     }
     
     @Transactional(readOnly = true)
+    @Cacheable(value = "restaurant_hours", key = "#restaurantId", cacheManager = "cacheManager")
     public List<RestaurantHourRequest> getRestaurantHours(Long restaurantId) {
+    	
+    	log.info("🔍 [MySQL 조회] 영업시간 정책을 DB에서 읽어옵니다. ID: {}", restaurantId);
     	
     	if (!restaurantRepository.existsById(restaurantId)) {
     		throw new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND);
