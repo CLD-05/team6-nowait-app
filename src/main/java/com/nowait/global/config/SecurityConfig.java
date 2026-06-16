@@ -45,7 +45,9 @@ public class SecurityConfig {
                         .requestMatchers(
                             "/api/v1/auth/signup",
                             "/api/v1/auth/signup/owner",
-                            "/api/v1/auth/login")
+                            "/api/v1/auth/login",
+                            "/actuator/health",
+                            "/actuator/health/**")
                         .permitAll()
                 		    .requestMatchers("/api/v1/restaurants/**").permitAll()
                 		    .requestMatchers("/api/v1/restaurants/*/waiting-session").permitAll()
