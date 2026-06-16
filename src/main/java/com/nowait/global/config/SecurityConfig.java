@@ -18,6 +18,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.http.HttpMethod;
 
 import java.time.Duration;
 import java.util.Arrays;
@@ -42,19 +43,31 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(
+                    .requestMatchers(
                             "/api/v1/auth/signup",
                             "/api/v1/auth/signup/owner",
                             "/api/v1/auth/login",
                             "/actuator/health",
                             "/actuator/health/**")
-                        .permitAll()
-                		    .requestMatchers("/api/v1/restaurants/**").permitAll()
-                		    .requestMatchers("/api/v1/restaurants/*/waiting-session").permitAll()
-                		    .requestMatchers("/api/v1/restaurants/*/reviews").permitAll()  // 추가
-                		    .requestMatchers("/api/v1/notifications/stream").permitAll()
-                		    .requestMatchers("/images/**").permitAll()
-                        .anyRequest().authenticated())
+                    .permitAll()
+
+                    // 정적 이미지 공개
+                    .requestMatchers("/images/**").permitAll()
+
+                    // 로그인한 점주만 접근해야 하는 내 매장 조회
+                    .requestMatchers(HttpMethod.GET, "/api/v1/restaurants/mine").authenticated()
+
+                    // 식당 조회 API만 공개
+                    .requestMatchers(HttpMethod.GET, "/api/v1/restaurants").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/restaurants/*").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/restaurants/*/hours").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/restaurants/*/waiting-session").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/restaurants/*/reviews").permitAll()
+
+                    // SSE는 일단 현재 구조 유지
+                    .requestMatchers("/api/v1/notifications/stream").permitAll()
+
+                    .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
