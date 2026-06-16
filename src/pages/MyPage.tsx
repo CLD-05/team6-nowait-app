@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE, IMAGE_BASE } from '../lib/api';
+import { API_BASE, resolveImageUrl } from '../lib/api';
 
 const USE_DUMMY = false;
 
@@ -49,10 +49,7 @@ type StoredUser = {
   email?: string;
 };
 
-function resolveImageUrl(imageUrl?: string) {
-  if (!imageUrl) return '/favicon.svg';
-  return /^https?:\/\//.test(imageUrl) ? imageUrl : `${IMAGE_BASE}${imageUrl}`;
-}
+
 
 const DUMMY_RESERVATIONS: Reservation[] = [
   { reservationToken: 'reservation-1', reservationId: 1, restaurantId: 1, restaurantName: '미진 1호점', slotDate: '2026-06-10', slotTime: '12:00', headcount: 2, status: 'CONFIRMED' },

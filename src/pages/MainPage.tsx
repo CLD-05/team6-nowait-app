@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
-import { API_BASE, IMAGE_BASE } from '../lib/api';
+import { API_BASE, resolveImageUrl } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 
@@ -25,10 +25,7 @@ type RestaurantApiResponse = {
   waitingAvailable: string;
 };
 
-function resolveImageUrl(imageUrl: string | undefined, category: CategoryKey) {
-  if (!imageUrl) return CATEGORY_IMAGES[category];
-  return /^https?:\/\//.test(imageUrl) ? imageUrl : `${IMAGE_BASE}${imageUrl}`;
-}
+
 
 const PAGE_SIZE = 12;
 
@@ -139,7 +136,7 @@ export default function MainPage() {
         name: r.name,
         category: r.category,
         mainMenuName: r.mainMenuName,
-        imageUrl: resolveImageUrl(r.imageUrl, r.category),
+        imageUrl: resolveImageUrl(r.imageUrl, CATEGORY_IMAGES[r.category]),
         reservable: r.reservationAvailable === 'Y',
         waitingAvailable: r.waitingAvailable === 'Y',
       })));
@@ -153,7 +150,7 @@ export default function MainPage() {
   useEffect(() => {
     if (USE_DUMMY) return;
     // 비동기 요청 완료 후 상태를 갱신한다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     void fetchRestaurants();
   }, [fetchRestaurants]);
 

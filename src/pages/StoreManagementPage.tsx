@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
-import { API_BASE } from '../lib/api';
+import { API_BASE, resolveImageUrl } from '../lib/api';
 import './StoreManagementPage.css';
 
 type Category = 'KOREAN' | 'JAPANESE' | 'CHINESE' | 'WESTERN' | 'ASIAN';
@@ -613,7 +613,7 @@ export default function StoreManagementPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {form.imageUrl && (
                       <img
-                        src={form.imageUrl.startsWith('http') ? form.imageUrl : `https://${form.imageUrl}`}
+                        src={resolveImageUrl(form.imageUrl)}
                         alt="대표 이미지 미리보기"
                         style={{ width: '120px', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e5e7eb' }}
                         onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}

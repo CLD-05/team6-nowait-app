@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 
 const USE_DUMMY = false;
-import { API_BASE, IMAGE_BASE, request } from '../lib/api';
+import { API_BASE, request, resolveImageUrl } from '../lib/api';
 
 // ─── 더미 데이터 ───────────────────────────────────────────────
 const UNSPLASH: Record<string, string> = {
@@ -101,10 +101,7 @@ type FavoriteSummary = {
   restaurantName?: string;
 };
 
-function resolveImageUrl(imageUrl?: string) {
-  if (!imageUrl) return '/favicon.svg';
-  return /^https?:\/\//.test(imageUrl) ? imageUrl : `${IMAGE_BASE}${imageUrl}`;
-}
+
 
 function getDummyRestaurant(id: number) {
   const cat = CATEGORIES[id % CATEGORIES.length];
@@ -340,7 +337,7 @@ export default function RestaurantPage() {
   // ── 초기 마운트 ──────────────────────────────────────────────
   useEffect(() => {
     // 데이터 요청의 setState는 비동기 응답 이후 실행된다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     void fetchRestaurant();
     void fetchWaitingSession();
     void fetchReviews();
@@ -359,7 +356,7 @@ export default function RestaurantPage() {
   useEffect(() => {
     if (!selectedDate) return;
     // 날짜가 바뀌면 이전 선택을 즉시 초기화한다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     setSelectedSlot(null);
     void fetchSlots(selectedDate);
     startSlotPolling(selectedDate);

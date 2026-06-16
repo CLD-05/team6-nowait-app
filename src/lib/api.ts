@@ -19,6 +19,20 @@ const API_ORIGIN = (
 export const API_BASE = `${API_ORIGIN}/api/v1`;
 export const IMAGE_BASE = API_ORIGIN;
 
+export function resolveImageUrl(imageUrl?: string | null, fallback = '/favicon.svg'): string {
+  if (!imageUrl) return fallback;
+
+  if (/^https?:\/\//.test(imageUrl)) {
+    return imageUrl;
+  }
+
+  if (imageUrl.startsWith('//')) {
+    return `https:${imageUrl}`;
+  }
+
+  return `${IMAGE_BASE}/${imageUrl.replace(/^\/+/, '')}`;
+}
+
 function getToken(): string | null {
   return localStorage.getItem('nowait_token');
 }
