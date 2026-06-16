@@ -92,8 +92,8 @@ export default function WaitingStatusPage() {
     }
   }, [id]);
 
-  // 최초 로드
-  useEffect(() => {
+  // 최초 로드 + polling fallback
+useEffect(() => {
   const token = localStorage.getItem('nowait_token');
 
   if (!token) {
