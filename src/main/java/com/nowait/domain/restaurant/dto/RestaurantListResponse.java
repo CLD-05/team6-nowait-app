@@ -21,17 +21,17 @@ public class RestaurantListResponse {
 	private String reservationAvailable;
 	private String waitingAvailable;
 	
-	public static RestaurantListResponse from(Restaurant restaurant) {
+	public static RestaurantListResponse from(Restaurant restaurant, String imageUrl) {
 		return new RestaurantListResponse(
 				restaurant.getId(),
 				restaurant.getName(),
 				restaurant.getCategory(),
 				restaurant.getAddress(),
-				restaurant.getImageUrl(),
+				imageUrl,
 				restaurant.getMainMenuName(),
 				restaurant.getStatus(),
 				restaurant.getReservationAvailable(),
 				restaurant.getWaitingAvailable()
-				);
+		);
 	}
 }

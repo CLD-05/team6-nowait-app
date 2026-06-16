@@ -24,6 +24,7 @@ import com.nowait.domain.restaurant.type.RestaurantCategory;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
+import com.nowait.global.s3.S3Service;
 
 import lombok.RequiredArgsConstructor;
 
@@ -34,6 +35,7 @@ public class RestaurantService {
 	
 	private final RestaurantRepository restaurantRepository;
 	private final RestaurantHourRepository restaurantHourRepository;
+	private final S3Service s3Service;
 	
 	@Transactional
     public Long registerRestaurant(RestaurantRegisterRequest request, Long ownerId) {
@@ -81,33 +83,50 @@ public class RestaurantService {
     }
 	
 	public List<RestaurantListResponse> getAllRestaurants() {
-		return restaurantRepository.findAll().stream()
-				.map(RestaurantListResponse::from)
-				.collect(Collectors.toList());
+    return restaurantRepository.findAll().stream()
+            .map(restaurant -> RestaurantListResponse.from(
+                restaurant,
+                s3Service.resolveReadableImageUrl(restaurant.getImageUrl())
+            ))
+            .collect(Collectors.toList());
 	}
 	
 	public List<RestaurantListResponse> searchRestaurantsByName(String keyword) {
-	    return restaurantRepository.findByNameContaining(keyword).stream()
-	            .map(RestaurantListResponse::from)
-	            .collect(Collectors.toList());
+    return restaurantRepository.findByNameContaining(keyword).stream()
+            .map(restaurant -> RestaurantListResponse.from(
+                restaurant,
+                s3Service.resolveReadableImageUrl(restaurant.getImageUrl())
+            ))
+            .collect(Collectors.toList());
 	}
-	
+
 	public List<RestaurantListResponse> getRestaurantsByCategory(RestaurantCategory category) {
 		return restaurantRepository.findByCategory(category).stream()
-				.map(RestaurantListResponse::from)
+				.map(restaurant -> RestaurantListResponse.from(
+					restaurant,
+					s3Service.resolveReadableImageUrl(restaurant.getImageUrl())
+				))
 				.collect(Collectors.toList());
 	}
 	
 	public RestaurantDetailResponse getRestaurantDetail(Long restaurantId) {
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
-		return RestaurantDetailResponse.from(restaurant);
+
+		return RestaurantDetailResponse.from(
+			restaurant,
+			s3Service.resolveReadableImageUrl(restaurant.getImageUrl())
+		);
 	}
 
 	public RestaurantDetailResponse getMyRestaurant(Long ownerId) {
 		Restaurant restaurant = restaurantRepository.findFirstByOwnerIdAndIsDeleted(ownerId, "N")
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
-		return RestaurantDetailResponse.from(restaurant);
+
+		return RestaurantDetailResponse.from(
+			restaurant,
+			s3Service.resolveReadableImageUrl(restaurant.getImageUrl())
+		);
 	}
 	
 	@Transactional
