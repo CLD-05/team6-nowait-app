@@ -1,13 +1,17 @@
 // ============================================
-// Nowait - api.ts
-// 공통 fetch 함수 + API Base URL 환경변수 관리
+// Nowait - API URL 관리 + 공통 request 함수
 // ============================================
-
-// VITE_API_BASE_URL에는 API origin만 넣는 것을 기준으로 함.
+//
+// VITE_API_BASE_URL에는 API origin만 넣는다.
+//
 // 예:
 // local: http://localhost:8080
 // dev:   http://k8s-nowaitdev-xxxx.ap-northeast-2.elb.amazonaws.com
 // prod:  https://api.nowait.com
+//
+// 주의:
+// VITE_API_BASE_URL에 /api/v1을 붙이지 않는다.
+
 const API_ORIGIN = (
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 ).replace(/\/$/, '');
@@ -25,7 +29,7 @@ function normalizePath(path: string): string {
 
 export async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
   const token = getToken();
 
@@ -52,10 +56,14 @@ export async function request<T>(
     throw new Error(err.message || '요청 처리 중 오류가 발생했습니다.');
   }
 
-  if (res.status === 204) return null as T;
+  if (res.status === 204) {
+    return null as T;
+  }
 
   const contentType = res.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) return res.json();
+  if (contentType.includes('application/json')) {
+    return res.json();
+  }
 
   return res.text() as unknown as T;
 }
