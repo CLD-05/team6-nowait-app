@@ -8,7 +8,7 @@ on:
 
 permissions:
   id-token: write
-  contents: read 
+  contents: read
 
 env:
   BACKEND_DIR: "."
@@ -35,18 +35,17 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
+          cache: maven
 
-      - name: Run backend tests
+      - name: Run Maven tests
         run: |
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew clean test
-          elif [ -f "./mvnw" ]; then
+          if [ -f "./mvnw" ]; then
             chmod +x ./mvnw
-            ./mvnw clean test
+            ./mvnw -B clean test
+          elif [ -f "pom.xml" ]; then
+            mvn -B clean test
           else
-            echo "No Gradle or Maven wrapper found."
+            echo "No Maven wrapper or pom.xml found."
             exit 1
           fi
 

@@ -32,18 +32,17 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
+          cache: maven
 
-      - name: Run backend tests
+      - name: Run Maven tests
         run: |
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew clean test
-          elif [ -f "./mvnw" ]; then
+          if [ -f "./mvnw" ]; then
             chmod +x ./mvnw
-            ./mvnw clean test
+            ./mvnw -B clean test
+          elif [ -f "pom.xml" ]; then
+            mvn -B clean test
           else
-            echo "No Gradle or Maven wrapper found."
+            echo "No Maven wrapper or pom.xml found."
             exit 1
           fi
 
@@ -73,11 +72,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run frontend tests
-        run: npm test -- --watch=false
+      - name: Run Vite frontend tests
+        run: npm test -- --run
 
-      - name: Build frontend
+      - name: Build Vite frontend
         env:
           VITE_API_BASE_URL: http://localhost:8080
-          REACT_APP_API_BASE_URL: http://localhost:8080
         run: npm run build
