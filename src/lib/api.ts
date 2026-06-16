@@ -3,26 +3,42 @@
 // 공통 fetch 함수 + API Base URL 환경변수 관리
 // ============================================
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
+// VITE_API_BASE_URL에는 API origin만 넣는 것을 기준으로 함.
+// 예:
+// local: http://localhost:8080
+// dev:   http://k8s-nowaitdev-xxxx.ap-northeast-2.elb.amazonaws.com
+// prod:  https://api.nowait.com
+const API_ORIGIN = (
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+).replace(/\/$/, '');
 
-// JWT 토큰 가져오기
+export const API_BASE = `${API_ORIGIN}/api/v1`;
+export const IMAGE_BASE = API_ORIGIN;
+
 function getToken(): string | null {
   return localStorage.getItem('nowait_token');
 }
 
-// 공통 fetch 함수
+function normalizePath(path: string): string {
+  return path.startsWith('/') ? path : `/${path}`;
+}
+
 export async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const token = getToken();
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(options.headers as Record<string, string> || {}),
+    ...((options.headers as Record<string, string>) || {}),
   };
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE}${normalizePath(path)}`, {
+    ...options,
+    headers,
+  });
 
   if (res.status === 401) {
     localStorage.removeItem('nowait_token');
@@ -37,7 +53,9 @@ export async function request<T>(
   }
 
   if (res.status === 204) return null as T;
+
   const contentType = res.headers.get('content-type') || '';
   if (contentType.includes('application/json')) return res.json();
+
   return res.text() as unknown as T;
 }
