@@ -1,0 +1,202 @@
+name: Backend Prod Promote
+
+on:
+workflow_dispatch:
+inputs:
+dev_image_tag:
+description: "승격할 dev 이미지 태그 예: dev-a1b2c3d"
+required: true
+type: string
+prod_image_tag:
+description: "prod 이미지 태그. 비우면 prod-<sha>로 자동 생성"
+required: false
+type: string
+
+permissions:
+id-token: write
+contents: read
+
+env:
+AWS_REGION: ${{ vars.AWS_REGION }}
+AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+CONFIG_REPO: ${{ vars.CONFIG_REPO }}
+
+concurrency:
+group: backend-prod-promote
+cancel-in-progress: false
+
+jobs:
+promote-and-update-prod:
+name: Promote image and update prod config
+runs-on: ubuntu-latest
+
+```
+environment: production
+
+steps:
+  - name: Check required variables
+    run: |
+      if [ -z "${AWS_REGION}" ]; then
+        echo "AWS_REGION is empty."
+        exit 1
+      fi
+
+      if [ -z "${AWS_ACCOUNT_ID}" ]; then
+        echo "AWS_ACCOUNT_ID is empty."
+        exit 1
+      fi
+
+      if [ -z "${ECR_REPOSITORY}" ]; then
+        echo "ECR_REPOSITORY is empty."
+        exit 1
+      fi
+
+      if [ -z "${CONFIG_REPO}" ]; then
+        echo "CONFIG_REPO is empty."
+        exit 1
+      fi
+
+  - name: Set image variables
+    id: image
+    run: |
+      DEV_IMAGE_TAG="${{ inputs.dev_image_tag }}"
+      INPUT_PROD_IMAGE_TAG="${{ inputs.prod_image_tag }}"
+
+      if [[ ! "$DEV_IMAGE_TAG" == dev-* ]]; then
+        echo "dev_image_tag must start with 'dev-'. Current value: ${DEV_IMAGE_TAG}"
+        exit 1
+      fi
+
+      if [ -n "$INPUT_PROD_IMAGE_TAG" ]; then
+        PROD_IMAGE_TAG="$INPUT_PROD_IMAGE_TAG"
+      else
+        PROD_IMAGE_TAG="prod-${DEV_IMAGE_TAG#dev-}"
+      fi
+
+      IMAGE_REPOSITORY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
+
+      echo "dev_image_tag=${DEV_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+      echo "prod_image_tag=${PROD_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+      echo "image_repository=${IMAGE_REPOSITORY}" >> "$GITHUB_OUTPUT"
+
+      echo "Dev image tag: ${DEV_IMAGE_TAG}"
+      echo "Prod image tag: ${PROD_IMAGE_TAG}"
+      echo "Image repository: ${IMAGE_REPOSITORY}"
+
+  - name: Configure AWS credentials for prod
+    uses: aws-actions/configure-aws-credentials@v4
+    with:
+      role-to-assume: ${{ secrets.AWS_PROD_ROLE_ARN }}
+      aws-region: ${{ env.AWS_REGION }}
+
+  - name: Check dev image exists in ECR
+    run: |
+      aws ecr describe-images \
+        --repository-name "${ECR_REPOSITORY}" \
+        --image-ids imageTag="${{ steps.image.outputs.dev_image_tag }}"
+
+  - name: Check prod image tag does not already exist
+    run: |
+      if aws ecr describe-images \
+        --repository-name "${ECR_REPOSITORY}" \
+        --image-ids imageTag="${{ steps.image.outputs.prod_image_tag }}" > /dev/null 2>&1; then
+        echo "Prod image tag already exists: ${{ steps.image.outputs.prod_image_tag }}"
+        echo "To avoid overwriting an existing prod image, use a different prod_image_tag."
+        exit 1
+      fi
+
+      echo "Prod image tag is available: ${{ steps.image.outputs.prod_image_tag }}"
+
+  - name: Retag dev image as prod image
+    run: |
+      MANIFEST=$(aws ecr batch-get-image \
+        --repository-name "${ECR_REPOSITORY}" \
+        --image-ids imageTag="${{ steps.image.outputs.dev_image_tag }}" \
+        --query 'images[0].imageManifest' \
+        --output text)
+
+      if [ "$MANIFEST" = "None" ] || [ -z "$MANIFEST" ]; then
+        echo "Dev image manifest not found: ${{ steps.image.outputs.dev_image_tag }}"
+        exit 1
+      fi
+
+      aws ecr put-image \
+        --repository-name "${ECR_REPOSITORY}" \
+        --image-tag "${{ steps.image.outputs.prod_image_tag }}" \
+        --image-manifest "$MANIFEST"
+
+  - name: Checkout config repository
+    uses: actions/checkout@v4
+    with:
+      repository: ${{ env.CONFIG_REPO }}
+      token: ${{ secrets.CONFIG_REPO_TOKEN }}
+      path: config-repo
+      ref: main
+
+  - name: Update prod image tags
+    working-directory: config-repo
+    run: |
+      python - <<'PY'
+      from pathlib import Path
+
+      image_tag = "${{ steps.image.outputs.prod_image_tag }}"
+
+      files = [
+          Path("envs/prod/api-values.yaml"),
+          Path("envs/prod/worker-values.yaml"),
+      ]
+
+      def replace_image_tag(path: Path, new_tag: str) -> None:
+          if not path.exists():
+              raise FileNotFoundError(f"{path} not found")
+
+          lines = path.read_text(encoding="utf-8").splitlines()
+          result = []
+
+          in_image_block = False
+          changed = False
+
+          for line in lines:
+              stripped = line.strip()
+
+              if line.startswith("image:"):
+                  in_image_block = True
+                  result.append(line)
+                  continue
+
+              if in_image_block and line and not line.startswith((" ", "\t")):
+                  in_image_block = False
+
+              if in_image_block and stripped.startswith("tag:"):
+                  indent = line[: len(line) - len(line.lstrip())]
+                  result.append(f'{indent}tag: "{new_tag}"')
+                  changed = True
+              else:
+                  result.append(line)
+
+          if not changed:
+              raise ValueError(f"image.tag not found in {path}")
+
+          path.write_text("\n".join(result) + "\n", encoding="utf-8")
+
+      for file in files:
+          replace_image_tag(file, image_tag)
+      PY
+
+  - name: Commit and push prod config changes
+    working-directory: config-repo
+    run: |
+      git config user.name "github-actions"
+      git config user.email "github-actions@github.com"
+
+      git add envs/prod/api-values.yaml envs/prod/worker-values.yaml
+
+      if git diff --cached --quiet; then
+        echo "No prod config changes."
+        exit 0
+      fi
+
+      git commit -m "prod 이미지 태그 승격: ${{ steps.image.outputs.prod_image_tag }}"
+      git push origin main
+```

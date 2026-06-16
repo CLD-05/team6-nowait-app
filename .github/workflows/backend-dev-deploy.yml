@@ -1,0 +1,152 @@
+name: Backend Dev Deploy
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions: 
+  id-token: write
+  contents: read
+
+env:
+  BACKEND_DIR: "."
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  CONFIG_REPO: ${{ vars.CONFIG_REPO }}
+
+jobs:
+  backend-test:
+    name: 1. Backend test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ${{ env.BACKEND_DIR }}
+
+    steps:
+      - name: Checkout app repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Run Maven tests
+        run: |
+          if [ -f "./mvnw" ]; then
+            chmod +x ./mvnw
+            ./mvnw -B clean test
+          elif [ -f "pom.xml" ]; then
+            mvn -B clean test
+          else
+            echo "No Maven wrapper or pom.xml found."
+            exit 1
+          fi
+
+  build-and-push-dev-image:
+    name: 2. Build and push dev image
+    runs-on: ubuntu-latest
+    needs:
+      - backend-test
+
+    environment: development
+
+    outputs:
+      image_tag: ${{ steps.image.outputs.image_tag }}
+      image_repository: ${{ steps.image.outputs.image_repository }}
+
+    steps:
+      - name: Checkout app repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials for dev
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEV_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image variables
+        id: image
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          IMAGE_TAG="dev-${SHORT_SHA}"
+          IMAGE_REPOSITORY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
+
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_repository=${IMAGE_REPOSITORY}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker image
+        working-directory: ${{ env.BACKEND_DIR }}
+        run: |
+          docker build \
+            -t "${{ steps.image.outputs.image_repository }}:${{ steps.image.outputs.image_tag }}" \
+            -t "${{ steps.image.outputs.image_repository }}:${{ github.sha }}" \
+            .
+
+      - name: Push Docker image to ECR
+        run: |
+          docker push "${{ steps.image.outputs.image_repository }}:${{ steps.image.outputs.image_tag }}"
+          docker push "${{ steps.image.outputs.image_repository }}:${{ github.sha }}"
+
+  update-dev-config:
+    name: 3. Update dev config repository
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-push-dev-image
+
+    steps:
+      - name: Checkout config repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CONFIG_REPO }}
+          token: ${{ secrets.CONFIG_REPO_TOKEN }}
+          path: config-repo
+          ref: main
+
+      - name: Update dev image tags
+        working-directory: config-repo
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          image_tag = "${{ needs.build-and-push-dev-image.outputs.image_tag }}"
+
+          files = [
+              Path("envs/dev/api-values.yaml"),
+              Path("envs/dev/worker-values.yaml"),
+          ]
+
+          for file in files:
+              if not file.exists():
+                  raise FileNotFoundError(f"{file} not found")
+
+              text = file.read_text(encoding="utf-8")
+              text = re.sub(r'tag:\s*"?[^"\n]+"?', f'tag: "{image_tag}"', text)
+              file.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit and push dev config changes
+        working-directory: config-repo
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add envs/dev/api-values.yaml envs/dev/worker-values.yaml
+
+          if git diff --cached --quiet; then
+            echo "No dev config changes."
+            exit 0
+          fi
+
+          git commit -m "dev 이미지 태그 갱신: ${{ needs.build-and-push-dev-image.outputs.image_tag }}"
+          git push origin main

@@ -46,7 +46,7 @@ public class RestaurantHour extends BaseTimeEntity {
 	@Column(name = "close_time", nullable = false)
 	private LocalTime closeTime;
 	
-	@Column(name = "is_regular_holiday", nullable = false, columnDefinition = "CHAR(1) DEFALUT 'N'")
+	@Column(name = "is_regular_holiday", nullable = false, columnDefinition = "CHAR(1) DEFAULT 'N'")
 	private String isRegularHoliday = "N";
 	
 	// 🛠️ 점주가 요일별 설정을 변경할 때 사용하는 메서드
