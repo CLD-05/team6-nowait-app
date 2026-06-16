@@ -336,35 +336,35 @@ export default function RestaurantPage() {
 
   // ── 초기 마운트 ──────────────────────────────────────────────
   useEffect(() => {
-    // 데이터 요청의 setState는 비동기 응답 이후 실행된다.
-     
-    void fetchRestaurant();
-    void fetchWaitingSession();
-    void fetchReviews();
-    void fetchFavoriteStatus();
-    startWaitingPolling();
-    void connectSse();
+  // 데이터 요청의 setState는 비동기 응답 이후 실행된다.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  void fetchRestaurant();
+  void fetchWaitingSession();
+  void fetchReviews();
+  void fetchFavoriteStatus();
+  startWaitingPolling();
+  void connectSse();
 
-    return () => {
-      if (waitingTimerRef.current) clearInterval(waitingTimerRef.current);
-      if (slotTimerRef.current) clearInterval(slotTimerRef.current);
-      sseRef.current?.close();
-    };
-  }, [connectSse, fetchFavoriteStatus, fetchRestaurant, fetchReviews, fetchWaitingSession, startWaitingPolling]);
+  return () => {
+    if (waitingTimerRef.current) clearInterval(waitingTimerRef.current);
+    if (slotTimerRef.current) clearInterval(slotTimerRef.current);
+    sseRef.current?.close();
+  };
+}, [connectSse, fetchFavoriteStatus, fetchRestaurant, fetchReviews, fetchWaitingSession, startWaitingPolling]);
 
   // ── 날짜 변경 시 슬롯 즉시 조회 + polling 재설정 ─────────────
   useEffect(() => {
-    if (!selectedDate) return;
-    // 날짜가 바뀌면 이전 선택을 즉시 초기화한다.
-     
-    setSelectedSlot(null);
-    void fetchSlots(selectedDate);
-    startSlotPolling(selectedDate);
+  if (!selectedDate) return;
+  // 날짜가 바뀌면 이전 선택을 즉시 초기화한다.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  setSelectedSlot(null);
+  void fetchSlots(selectedDate);
+  startSlotPolling(selectedDate);
 
-    return () => {
-      if (slotTimerRef.current) clearInterval(slotTimerRef.current);
-    };
-  }, [fetchSlots, selectedDate, startSlotPolling]);
+  return () => {
+    if (slotTimerRef.current) clearInterval(slotTimerRef.current);
+  };
+}, [fetchSlots, selectedDate, startSlotPolling]);
 
   // ── 액션 핸들러 ─────────────────────────────────────────────
 

@@ -148,11 +148,11 @@ export default function MainPage() {
   }, [appliedKeyword, category]);
 
   useEffect(() => {
-    if (USE_DUMMY) return;
-    // 비동기 요청 완료 후 상태를 갱신한다.
-     
-    void fetchRestaurants();
-  }, [fetchRestaurants]);
+  if (USE_DUMMY) return;
+  // 비동기 요청 완료 후 상태를 갱신한다.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  void fetchRestaurants();
+}, [fetchRestaurants]);
 
   const filteredRestaurants = useMemo(() => {
     const normalizedKeyword = appliedKeyword.trim();
