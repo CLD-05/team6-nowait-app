@@ -65,6 +65,7 @@ public class SecurityConfig {
                     .requestMatchers(HttpMethod.GET, "/api/v1/restaurants/*/hours").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/v1/restaurants/*/waiting-session").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/v1/restaurants/*/reviews").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/restaurants/*/slots").permitAll()
 
                     // SSE는 일단 현재 구조 유지
                     .requestMatchers("/api/v1/notifications/stream").permitAll()
