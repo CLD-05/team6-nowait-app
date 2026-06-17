@@ -287,6 +287,7 @@ public class ReservationService {
      * 예약 승인 (점주) — PATCH /api/v1/owner/reservations/{token}/approve
      * PENDING → CONFIRMED
      */
+    @Transactional
     public ReservationResponse approveReservation(Long ownerUserId, String token) {
         ReservationTokenData data = findTokenDataOrThrow(token);
         verifyOwnership(data.restaurantId(), ownerUserId);
@@ -306,25 +307,55 @@ public class ReservationService {
      * 예약 거부 (점주) — PATCH /api/v1/owner/reservations/{token}/reject
      * PENDING → REJECTED
      */
+    @Transactional
     public ReservationResponse rejectReservation(Long ownerUserId, String token, RejectReservationRequest request) {
         ReservationTokenData data = findTokenDataOrThrow(token);
-        verifyOwnership(data.restaurantId(), ownerUserId);
+        // [케이스 1] Redis에 데이터가 생존해 있을 때 -> 기존 고속 처리 경로
+        if (data != null) {
+            verifyOwnership(data.restaurantId(), ownerUserId);
+            if (data.status() != ReservationStatus.PENDING) {
+                throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
+            }
+            reservationRedis.reject(token, data.userId(), data.slotId(), request.reason().name());
+            log.info("Reservation rejected via Redis. token={}, reason={}", token, request.reason());
 
-        if (data.status() != ReservationStatus.PENDING) {
+            ReservationTokenData updated = reservationRedis.findByToken(token);
+            return buildFromRedis(token, updated == null ? data : updated);
+        }
+        
+        // [케이스 2] ★ 새 지평 ★ Redis TTL 만료 시 — DB 직접 거부 (Fallback)
+        Reservation reservation = reservationRepository.findByReservationToken(token)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESERVATION_NOT_FOUND));
+        
+        verifyOwnership(reservation.getRestaurant().getId(), ownerUserId);
+        
+        if (reservation.getStatus() != ReservationStatus.PENDING) {
             throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
         }
+        
+        // DB의 예약 상태 직접 업데이트
+        reservation.syncFromRedis(
+            ReservationStatus.REJECTED,
+            reservation.getVisitedAt(),
+            LocalDateTime.now(), // 거부 일시 기록
+            reservation.getNoShowAt()
+        );
+        
+        // 거부되었으므로 DB 내 매장의 해당 타임 슬롯 카운트 원상 복구!
+        if (reservation.getSlot() != null) {
+            slotService.increase(reservation.getSlot().getId());
+            log.info("Slot count restored via DB reject fallback. slotId={}", reservation.getSlot().getId());
+        }
 
-        reservationRedis.reject(token, data.userId(), data.slotId(), request.reason().name());
-        log.info("Reservation rejected. token={}, reason={}", token, request.reason());
-
-        ReservationTokenData updated = reservationRedis.findByToken(token);
-        return buildFromRedis(token, updated == null ? data : updated);
+        log.info("Reservation rejected via DB fallback. token={}", token);
+        return ReservationResponse.from(reservation);
     }
 
     /*
      * 방문 완료 처리 (점주) — PATCH /api/v1/owner/reservations/{token}/visit
      * DB 상태 업데이트는 Worker 가 비동기 처리.
      */
+    @Transactional
     public ReservationResponse markVisited(Long ownerUserId, String token) {
         ReservationTokenData data = findTokenDataOrThrow(token);
         verifyOwnership(data.restaurantId(), ownerUserId);
@@ -340,6 +371,7 @@ public class ReservationService {
      * 노쇼 처리 (점주) — PATCH /api/v1/owner/reservations/{token}/noshow
      * DB 상태 업데이트는 Worker 가 비동기 처리.
      */
+    @Transactional
     public ReservationResponse markNoShow(Long ownerUserId, String token) {
         ReservationTokenData data = findTokenDataOrThrow(token);
         verifyOwnership(data.restaurantId(), ownerUserId);
