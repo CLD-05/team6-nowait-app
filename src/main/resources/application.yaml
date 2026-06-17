@@ -32,6 +32,11 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       timeout: ${REDIS_TIMEOUT:3000ms}
+      # prod ElastiCache는 AUTH 토큰 + TLS를 쓴다 (REDIS_PASSWORD/REDIS_SSL_ENABLED로 주입).
+      # 로컬/dev는 둘 다 비워두면 기존과 동일하게 평문/무인증으로 접속한다.
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
 
 jwt:
   secret: ${JWT_SECRET:local-dev-jwt-secret-key-must-be-at-least-32-bytes}
