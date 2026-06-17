@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
-import { API_BASE } from '../lib/api';
+import { request } from '../lib/api';
 
 type SessionStatus = 'OPEN' | 'PAUSED' | 'CLOSED';
 type WaitingStatus = 'WAITING' | 'CALLED' | 'ENTERED' | 'CANCELLED';
@@ -72,30 +72,6 @@ function formatDateTime(raw: string | null | undefined): string {
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('nowait_token');
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...(options.headers ?? {}),
-    },
-  });
-  if (res.status === 401) {
-    localStorage.removeItem('nowait_token');
-    localStorage.removeItem('nowait_user');
-    window.location.href = '/auth';
-    throw new Error('로그인이 만료됐어요.');
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(body.message ?? '요청 처리 중 오류가 발생했습니다.');
-  }
-  const text = await res.text();
-  return (text ? JSON.parse(text) : null) as T;
-}
-
 const POLL_MS = 30_000;
 
 export default function OwnerPage() {
@@ -119,9 +95,9 @@ export default function OwnerPage() {
 
   const fetchLiveData = useCallback(async (restaurantId: number) => {
     const [sessionRes, waitingsRes, reservationsRes] = await Promise.allSettled([
-      apiFetch<WaitingSession>(`/restaurants/${restaurantId}/waiting-session`),
-      apiFetch<OwnerWaiting[]>(`/owners/restaurants/${restaurantId}/waitings`),
-      apiFetch<Array<{
+      request<WaitingSession>(`/restaurants/${restaurantId}/waiting-session`),
+      request<OwnerWaiting[]>(`/owners/restaurants/${restaurantId}/waitings`),
+      request<Array<{
         reservationToken: string; reservationId: number | null;
         slotDate: string; slotTime: string; headcount: number;
         status: ReservationStatus; userName?: string;
@@ -165,7 +141,7 @@ export default function OwnerPage() {
     async function init() {
       setRestaurantLoading(true);
       try {
-        const data = await apiFetch<Restaurant>('/restaurants/mine');
+        const data = await request<Restaurant>('/restaurants/mine');
         setRestaurant(data);
         setDataLoading(true);
         await fetchLiveData(data.id);
@@ -186,7 +162,7 @@ export default function OwnerPage() {
 
   async function callWaiting(token: string) {
     try {
-      await apiFetch(`/owners/waitings/${token}/call`, { method: 'PATCH' });
+      await request(`/owners/waitings/${token}/call`, { method: 'PATCH' });
       setWaitings(prev => prev.map(w => w.waitingToken === token ? { ...w, status: 'CALLED' } : w));
     } catch (err) {
       alert(err instanceof Error ? err.message : '호출에 실패했습니다.');
@@ -195,7 +171,7 @@ export default function OwnerPage() {
 
   async function enterWaiting(token: string) {
     try {
-      await apiFetch(`/owners/waitings/${token}/enter`, { method: 'PATCH' });
+      await request(`/owners/waitings/${token}/enter`, { method: 'PATCH' });
       setWaitings(prev => prev.map(w => w.waitingToken === token ? { ...w, status: 'ENTERED' } : w));
       setSession(s => s ? { ...s, currentCount: Math.max(0, s.currentCount - 1) } : s);
     } catch (err) {
@@ -205,7 +181,7 @@ export default function OwnerPage() {
 
   async function approveReservation(token: string) {
     try {
-      await apiFetch(`/owner/reservations/${token}/approve`, { method: 'PATCH' });
+      await request(`/owner/reservations/${token}/approve`, { method: 'PATCH' });
       setReservations(prev => prev.map(r => r.reservationToken === token ? { ...r, status: 'CONFIRMED' } : r));
     } catch (err) {
       alert(err instanceof Error ? err.message : '승인 처리에 실패했습니다.');
@@ -214,7 +190,7 @@ export default function OwnerPage() {
 
   async function rejectReservation(token: string, reason: string) {
     try {
-      await apiFetch(`/owner/reservations/${token}/reject`, {
+      await request(`/owner/reservations/${token}/reject`, {
         method: 'PATCH',
         body: JSON.stringify({ reason }),
       });
@@ -227,7 +203,7 @@ export default function OwnerPage() {
 
   async function markVisited(token: string) {
     try {
-      await apiFetch(`/owner/reservations/${token}/visit`, { method: 'PATCH' });
+      await request(`/owner/reservations/${token}/visit`, { method: 'PATCH' });
       setReservations(prev => prev.map(r => r.reservationToken === token ? { ...r, status: 'VISITED' } : r));
     } catch (err) {
       alert(err instanceof Error ? err.message : '방문완료 처리에 실패했습니다.');
@@ -237,7 +213,7 @@ export default function OwnerPage() {
   async function markNoShow(token: string) {
     if (!confirm('노쇼 처리하시겠어요?')) return;
     try {
-      await apiFetch(`/owner/reservations/${token}/noshow`, { method: 'PATCH' });
+      await request(`/owner/reservations/${token}/noshow`, { method: 'PATCH' });
       setReservations(prev => prev.map(r => r.reservationToken === token ? { ...r, status: 'NO_SHOW' } : r));
     } catch (err) {
       alert(err instanceof Error ? err.message : '노쇼 처리에 실패했습니다.');
@@ -249,7 +225,7 @@ export default function OwnerPage() {
     const label = { pause: '일시정지', resume: '재개', close: '마감' }[action];
     if (!confirm(`웨이팅을 ${label}하시겠어요?`)) return;
     try {
-      const updated = await apiFetch<WaitingSession>(
+      const updated = await request<WaitingSession>(
         `/owners/waiting-sessions/${session.sessionId}/${action}`,
         { method: 'PATCH' },
       );

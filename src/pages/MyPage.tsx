@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE, resolveImageUrl } from '../lib/api';
 
-const USE_DUMMY = false;
-
 type Reservation = {
   reservationToken: string;
   reservationId: number | null;
@@ -49,34 +47,6 @@ type StoredUser = {
   email?: string;
 };
 
-
-
-const DUMMY_RESERVATIONS: Reservation[] = [
-  { reservationToken: 'reservation-1', reservationId: 1, restaurantId: 1, restaurantName: '미진 1호점', slotDate: '2026-06-10', slotTime: '12:00', headcount: 2, status: 'CONFIRMED' },
-  { reservationToken: 'reservation-2', reservationId: 2, restaurantId: 2, restaurantName: '스시콜 2호점', slotDate: '2026-06-08', slotTime: '19:00', headcount: 4, status: 'VISITED' },
-  { reservationToken: 'reservation-3', reservationId: 3, restaurantId: 3, restaurantName: '왕가원 3호점', slotDate: '2026-06-05', slotTime: '13:00', headcount: 2, status: 'CANCELLED' },
-  { reservationToken: 'reservation-4', reservationId: 4, restaurantId: 4, restaurantName: '비스트로 르', slotDate: '2026-06-03', slotTime: '18:30', headcount: 3, status: 'NO_SHOW' },
-];
-
-const DUMMY_WAITINGS: Waiting[] = [
-  { waitingToken: 'waiting-1', restaurantId: 1, restaurantName: '미진 1호점', waitingNumber: 5, partySize: 2, status: 'WAITING' },
-  { waitingToken: 'waiting-2', restaurantId: 2, restaurantName: '스시콜 2호점', waitingNumber: 3, partySize: 4, status: 'CALLED' },
-  { waitingToken: 'waiting-3', restaurantId: 3, restaurantName: '왕가원 3호점', waitingNumber: 7, partySize: 2, status: 'ENTERED' },
-];
-
-const DUMMY_FAVORITES: Favorite[] = [
-  { favoriteId: 1, restaurantId: 1, restaurantName: '미진 1호점', category: 'KOREAN', mainMenuName: '제육볶음', imageUrl: 'https://images.unsplash.com/photo-1583224944844-5b268c057b72?w=400&q=80' },
-  { favoriteId: 2, restaurantId: 2, restaurantName: '스시콜 2호점', category: 'JAPANESE', mainMenuName: '특선 스시', imageUrl: 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=400&q=80' },
-  { favoriteId: 3, restaurantId: 3, restaurantName: '왕가원 3호점', category: 'CHINESE', mainMenuName: '마파두부', imageUrl: 'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=400&q=80' },
-];
-
-const DUMMY_NOTIFICATIONS: Notification[] = [
-  { notificationId: 1, type: 'WAITING_CALLED', message: '미진 1호점 웨이팅 차례가 됐어요! 10분 안에 입장해주세요.', isRead: 'N', createdAt: '2026-06-10 12:30' },
-  { notificationId: 2, type: 'RESERVATION_CONFIRMED', message: '스시콜 2호점 예약이 확정됐어요. 6월 8일 19:00 4명', isRead: 'N', createdAt: '2026-06-08 10:00' },
-  { notificationId: 3, type: 'REVIEW_REQUEST', message: '왕가원 3호점 방문 어떠셨나요? 리뷰를 남겨주세요!', isRead: 'Y', createdAt: '2026-06-05 20:00' },
-  { notificationId: 4, type: 'RESERVATION_CANCELLED', message: '비스트로 르 예약이 취소됐어요.', isRead: 'Y', createdAt: '2026-06-03 15:00' },
-  { notificationId: 5, type: 'WAITING_REGISTERED', message: '방콕포차 웨이팅 8번으로 등록됐어요.', isRead: 'Y', createdAt: '2026-06-01 18:00' },
-];
 
 const CAT_LABEL: Record<string, string> = {
   KOREAN: '한식', JAPANESE: '일식', CHINESE: '중식', WESTERN: '양식', ASIAN: '아시안',
@@ -138,15 +108,6 @@ export default function MyPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      if (USE_DUMMY) {
-        await new Promise(r => setTimeout(r, 300));
-        setReservations(DUMMY_RESERVATIONS);
-        setWaitings(DUMMY_WAITINGS);
-        setFavorites(DUMMY_FAVORITES);
-        setNotifications(DUMMY_NOTIFICATIONS);
-        return;
-      }
-
       const token = localStorage.getItem('nowait_token');
       if (!token) { navigate('/auth'); return; }
       const h = { Authorization: `Bearer ${token}` };
@@ -265,21 +226,17 @@ export default function MyPage() {
   async function cancelReservation(reservationToken: string) {
     if (!confirm('예약을 취소하시겠어요?')) return;
     try {
-      if (USE_DUMMY) {
-        setReservations(prev => prev.map(r => r.reservationToken === reservationToken ? { ...r, status: 'CANCELLED' } : r));
-      } else {
-        const token = localStorage.getItem('nowait_token');
-        const response = await fetch(`${API_BASE}/reservations/${reservationToken}/cancel`, {
-          method: 'PATCH',
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({})) as { message?: string };
-          alert(err.message || '예약 취소에 실패했습니다.');
-          return;
-        }
-        await fetchData();
+      const token = localStorage.getItem('nowait_token');
+      const response = await fetch(`${API_BASE}/reservations/${reservationToken}/cancel`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({})) as { message?: string };
+        alert(err.message || '예약 취소에 실패했습니다.');
+        return;
       }
+      await fetchData();
     } catch {
       alert('예약 취소 중 오류가 발생했습니다.');
     }
@@ -288,21 +245,17 @@ export default function MyPage() {
   async function cancelWaiting(waitingToken: string) {
     if (!confirm('웨이팅을 취소하시겠어요?')) return;
     try {
-      if (USE_DUMMY) {
-        setWaitings(prev => prev.map(w => w.waitingToken === waitingToken ? { ...w, status: 'CANCELLED' } : w));
-      } else {
-        const token = localStorage.getItem('nowait_token');
-        const response = await fetch(`${API_BASE}/waitings/${waitingToken}/cancel`, {
-          method: 'PATCH',
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({})) as { message?: string };
-          alert(err.message || '웨이팅 취소에 실패했습니다.');
-          return;
-        }
-        await fetchData();
+      const token = localStorage.getItem('nowait_token');
+      const response = await fetch(`${API_BASE}/waitings/${waitingToken}/cancel`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({})) as { message?: string };
+        alert(err.message || '웨이팅 취소에 실패했습니다.');
+        return;
       }
+      await fetchData();
     } catch {
       alert('웨이팅 취소 중 오류가 발생했습니다.');
     }
@@ -340,11 +293,6 @@ export default function MyPage() {
     if (!confirm(`선택한 ${selectedTokens.size}건의 내역을 삭제하시겠어요?`)) return;
     setDeleteLoading(true);
     try {
-      if (USE_DUMMY) {
-        setReservations(prev => prev.filter(r => !selectedTokens.has(r.reservationToken)));
-        setSelectedTokens(new Set());
-        return;
-      }
       const jwtToken = localStorage.getItem('nowait_token');
       const results = await Promise.all(
         [...selectedTokens].map(resToken =>
@@ -367,25 +315,17 @@ export default function MyPage() {
 
   async function removeFavorite(restaurantId: number) {
     if (!confirm('즐겨찾기를 삭제하시겠어요?')) return;
-    if (USE_DUMMY) {
-      setFavorites(prev => prev.filter(f => f.restaurantId !== restaurantId));
-    } else {
-      const token = localStorage.getItem('nowait_token');
-      const response = await fetch(`${API_BASE}/restaurants/${restaurantId}/favorite`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) throw new Error('즐겨찾기 해제에 실패했습니다.');
-      await fetchData();
-    }
+    const token = localStorage.getItem('nowait_token');
+    const response = await fetch(`${API_BASE}/restaurants/${restaurantId}/favorite`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new Error('즐겨찾기 해제에 실패했습니다.');
+    await fetchData();
   }
 
   async function markAllRead() {
-    if (USE_DUMMY) {
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: 'Y' })));
-    } else {
-      const token = localStorage.getItem('nowait_token');
-      const response = await fetch(`${API_BASE}/notifications/read-all`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) throw new Error('알림 읽음 처리에 실패했습니다.');
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: 'Y' })));
-    }
+    const token = localStorage.getItem('nowait_token');
+    const response = await fetch(`${API_BASE}/notifications/read-all`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new Error('알림 읽음 처리에 실패했습니다.');
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: 'Y' })));
   }
 
   const filteredReservations = statusFilter === 'ALL'

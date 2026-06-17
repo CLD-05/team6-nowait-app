@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { API_BASE, resolveImageUrl } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
@@ -45,37 +45,6 @@ const CATEGORY_LABEL: Record<CategoryKey, string> = {
   ASIAN: '아시안',
 };
 
-const MENU: Record<CategoryKey, string> = {
-  KOREAN: '제육볶음',
-  JAPANESE: '특선 스시',
-  CHINESE: '마파두부',
-  WESTERN: '안심 스테이크',
-  ASIAN: '팟타이',
-};
-
-const NAMES = [
-  '미진',
-  '스시코우',
-  '명가반점',
-  '비스트로 루프',
-  '방콕키친',
-  '한상차림',
-  '오마카세 봄',
-  '포레스트 다이너',
-  '트라토리아 문',
-  '대구수집',
-  '고깃집 오늘',
-  '우전초밥',
-  '마라공방',
-  '파스타리아',
-  '분짜하노이',
-  '전주비빔',
-  '돈카츠 하루',
-  '목동치킨',
-  '스테이크 하우스',
-  '카오산',
-];
-
 const CATEGORIES: Array<{ label: string; value: '' | CategoryKey }> = [
   { label: '전체', value: '' },
   { label: '한식', value: 'KOREAN' },
@@ -84,30 +53,6 @@ const CATEGORIES: Array<{ label: string; value: '' | CategoryKey }> = [
   { label: '양식', value: 'WESTERN' },
   { label: '아시안', value: 'ASIAN' },
 ];
-
-function buildDummyRestaurants(): Restaurant[] {
-  const categories: CategoryKey[] = ['KOREAN', 'JAPANESE', 'CHINESE', 'WESTERN', 'ASIAN'];
-  let id = 1;
-
-  return categories.flatMap(category =>
-    Array.from({ length: 20 }, (_, index) => {
-      const currentId = id++;
-
-      return {
-        id: currentId,
-        name: `${NAMES[(currentId + index) % NAMES.length]} ${index + 1}호점`,
-        category,
-        mainMenuName: MENU[category],
-        imageUrl: CATEGORY_IMAGES[category],
-        reservable: true,
-        waitingAvailable: currentId % 2 === 0,
-      };
-    }),
-  );
-}
-
-const RESTAURANTS = buildDummyRestaurants();
-const USE_DUMMY = false;
 
 export default function MainPage() {
   const navigate = useNavigate();
@@ -148,27 +93,12 @@ export default function MainPage() {
   }, [appliedKeyword, category]);
 
   useEffect(() => {
-  if (USE_DUMMY) return;
   // 비동기 요청 완료 후 상태를 갱신한다.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   void fetchRestaurants();
 }, [fetchRestaurants]);
 
-  const filteredRestaurants = useMemo(() => {
-    const normalizedKeyword = appliedKeyword.trim();
-
-    return RESTAURANTS.filter(restaurant => {
-      const matchesCategory = category === '' || restaurant.category === category;
-      const matchesKeyword =
-        normalizedKeyword === '' ||
-        restaurant.name.includes(normalizedKeyword) ||
-        restaurant.mainMenuName.includes(normalizedKeyword);
-
-      return matchesCategory && matchesKeyword;
-    });
-  }, [appliedKeyword, category]);
-
-  const availableRestaurants = USE_DUMMY ? filteredRestaurants : restaurants2;
+  const availableRestaurants = restaurants2;
   const totalPages = Math.max(1, Math.ceil(availableRestaurants.length / PAGE_SIZE));
   const restaurants = availableRestaurants.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -295,7 +225,7 @@ export default function MainPage() {
                 marginTop: '8px',
               }}
             >
-              {RESTAURANTS.length}
+              {availableRestaurants.length}
             </div>
             <div
               style={{

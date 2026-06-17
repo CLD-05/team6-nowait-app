@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
-import { API_BASE, resolveImageUrl } from '../lib/api';
+import { API_BASE, ApiError, request, resolveImageUrl } from '../lib/api';
 import './StoreManagementPage.css';
 
 type Category = 'KOREAN' | 'JAPANESE' | 'CHINESE' | 'WESTERN' | 'ASIAN';
@@ -87,8 +87,17 @@ const WAITING_SESSION_LABEL: Record<string, string> = {
   CLOSED: '마감',
 };
 
+/**
+ * 오늘 날짜를 "YYYY-MM-DD" 형태로 반환.
+ * toISOString()은 UTC 기준이라 KST 00:00~08:59 사이에는 하루 전 날짜를 반환해
+ * 백엔드(KST 기준 LocalDate.now)와 어긋난다. 로컬 캘린더 날짜를 그대로 사용한다.
+ */
 function getTodayStr() {
-  return new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 const DAY_LABEL: Record<string, string> = {
@@ -105,48 +114,12 @@ const DEFAULT_HOURS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].map(dayO
 
 type HourRow = { dayOfWeek: string; openTime: string; closeTime: string; isRegularHoliday: string };
 
-class ApiError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
-
 function readOwnerRole() {
   try {
     return JSON.parse(localStorage.getItem('nowait_user') || '{}').role === 'OWNER';
   } catch {
     return false;
   }
-}
-
-async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('nowait_token');
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {}),
-    },
-  });
-
-  if (response.status === 401) {
-    localStorage.removeItem('nowait_token');
-    localStorage.removeItem('nowait_user');
-    window.location.href = '/auth';
-    throw new ApiError(401, '로그인이 만료되었습니다.');
-  }
-
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, body.message || '요청을 처리하지 못했습니다.');
-  }
-
-  const text = await response.text();
-  return (text ? JSON.parse(text) : null) as T;
 }
 
 export default function StoreManagementPage() {
@@ -201,7 +174,7 @@ export default function StoreManagementPage() {
 
     async function loadRestaurant() {
       try {
-        const data = await apiFetch<RestaurantResponse>('/restaurants/mine');
+        const data = await request<RestaurantResponse>('/restaurants/mine');
         setRestaurantId(data.id);
         setForm({
           name: data.name || '',
@@ -251,7 +224,7 @@ export default function StoreManagementPage() {
   async function fetchHours() {
     if (!restaurantId) return;
     try {
-      const data = await apiFetch<HourRow[]>(`/owners/restaurants/${restaurantId}/hours`);
+      const data = await request<HourRow[]>(`/owners/restaurants/${restaurantId}/hours`);
       if (data && data.length > 0) {
         // API가 반환한 순서가 불규칙할 수 있으므로 요일 순서대로 정렬
         const order = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
@@ -273,7 +246,7 @@ export default function StoreManagementPage() {
     setHoursSaving(true);
     setHoursMsg('');
     try {
-      await apiFetch(`/owners/restaurants/${restaurantId}/hours`, {
+      await request(`/owners/restaurants/${restaurantId}/hours`, {
         method: 'POST',
         body: JSON.stringify(
           hours.map(h => ({
@@ -301,7 +274,7 @@ export default function StoreManagementPage() {
     if (!restaurantId) return;
     setSlotLoading(true);
     try {
-      const data = await apiFetch<{ slots?: SlotInfo[] }>(`/restaurants/${restaurantId}/slots?date=${date}`);
+      const data = await request<{ slots?: SlotInfo[] }>(`/restaurants/${restaurantId}/slots?date=${date}`);
       setSlots(data.slots ?? []);
     } catch {
       setSlots([]);
@@ -315,7 +288,7 @@ export default function StoreManagementPage() {
     if (!restaurantId) return;
     setSlotMsg('');
     try {
-      await apiFetch(`/owner/restaurants/${restaurantId}/slots`, {
+      await request(`/owner/restaurants/${restaurantId}/slots`, {
         method: 'POST',
         body: JSON.stringify({
           slotDate: slotForm.slotDate,
@@ -337,7 +310,7 @@ export default function StoreManagementPage() {
     if (!editingSlot) return;
     setSlotMsg('');
     try {
-      await apiFetch(`/owner/slots/${editingSlot.slotId}`, {
+      await request(`/owner/slots/${editingSlot.slotId}`, {
         method: 'PATCH',
         body: JSON.stringify({
           totalCount: editingSlot.totalCount,
@@ -357,7 +330,7 @@ export default function StoreManagementPage() {
     if (!confirm('슬롯을 삭제할까요?')) return;
     setSlotMsg('');
     try {
-      await apiFetch(`/owner/slots/${slotId}`, { method: 'DELETE' });
+      await request(`/owner/slots/${slotId}`, { method: 'DELETE' });
       setSlots(prev => prev.filter(s => s.slotId !== slotId));
       setSlotMsg('슬롯이 삭제됐어요.');
     } catch (err) {
@@ -368,7 +341,7 @@ export default function StoreManagementPage() {
   async function fetchWaitingSession() {
     if (!restaurantId) return;
     try {
-      const data = await apiFetch<WaitingSession>(`/restaurants/${restaurantId}/waiting-session`);
+      const data = await request<WaitingSession>(`/restaurants/${restaurantId}/waiting-session`);
       setWaitingSession(data);
     } catch {
       setWaitingSession(null);
@@ -380,7 +353,7 @@ export default function StoreManagementPage() {
     setSessionLoading(true);
     setSessionMsg('');
     try {
-      const data = await apiFetch<WaitingSession>(`/owners/restaurants/${restaurantId}/waiting-sessions`, {
+      const data = await request<WaitingSession>(`/owners/restaurants/${restaurantId}/waiting-sessions`, {
         method: 'POST',
         body: JSON.stringify({ maxWaitingCount }),
       });
@@ -398,7 +371,7 @@ export default function StoreManagementPage() {
     setSessionLoading(true);
     setSessionMsg('');
     try {
-      const data = await apiFetch<WaitingSession>(`/owners/waiting-sessions/${waitingSession.sessionId}/${action}`, { method: 'PATCH' });
+      const data = await request<WaitingSession>(`/owners/waiting-sessions/${waitingSession.sessionId}/${action}`, { method: 'PATCH' });
       setWaitingSession(data);
       const label = action === 'pause' ? '일시 정지' : action === 'resume' ? '재개' : '마감';
       setSessionMsg(`웨이팅 세션이 ${label}됐어요.`);
@@ -472,13 +445,13 @@ export default function StoreManagementPage() {
     setSaving(true);
     try {
       if (restaurantId) {
-        await apiFetch(`/restaurants/${restaurantId}`, {
+        await request(`/restaurants/${restaurantId}`, {
           method: 'PUT',
           body: JSON.stringify(form),
         });
         setMessage('매장 정보가 저장되었습니다.');
       } else {
-        const id = await apiFetch<number>('/restaurants', {
+        const id = await request<number>('/restaurants', {
           method: 'POST',
           body: JSON.stringify({ ...form, restaurantHours: DEFAULT_HOURS }),
         });
@@ -691,7 +664,7 @@ export default function StoreManagementPage() {
                               setStatusMenuOpen(false);
                               if (restaurantId) {
                                 try {
-                                  await apiFetch(`/restaurants/${restaurantId}/status`, {
+                                  await request(`/restaurants/${restaurantId}/status`, {
                                     method: 'PATCH',
                                     body: JSON.stringify({ status }),
                                   });

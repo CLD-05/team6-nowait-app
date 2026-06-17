@@ -1,31 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-
-const USE_DUMMY = false;
 import { API_BASE, request, resolveImageUrl } from '../lib/api';
 
-// ─── 더미 데이터 ───────────────────────────────────────────────
-const UNSPLASH: Record<string, string> = {
-  KOREAN: 'https://images.unsplash.com/photo-1583224944844-5b268c057b72?w=800&q=80',
-  JAPANESE: 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=800&q=80',
-  CHINESE: 'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=800&q=80',
-  WESTERN: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80',
-  ASIAN: 'https://images.unsplash.com/photo-1559314809-0d155014e29e?w=800&q=80',
-};
 const CAT_LABEL: Record<string, string> = {
   KOREAN: '한식', JAPANESE: '일식', CHINESE: '중식', WESTERN: '양식', ASIAN: '아시안',
 };
-const CATEGORIES = ['KOREAN', 'JAPANESE', 'CHINESE', 'WESTERN', 'ASIAN'];
-const NAMES = ['미진', '스시콜', '왕가원', '비스트로 르', '방콕포차', '한상차림', '오마카세 정', '딘타이펑'];
-const MENU: Record<string, string> = {
-  KOREAN: '제육볶음', JAPANESE: '특선 스시', CHINESE: '마파두부',
-  WESTERN: '안심 스테이크', ASIAN: '팟타이',
-};
-const DUMMY_REVIEWS = [
-  { reviewId: 1, userName: '김철수', rating: 5, content: '음식이 정말 맛있었어요! 서비스도 친절하고 분위기도 좋았습니다.', createdAt: '2026-06-08' },
-  { reviewId: 2, userName: '이영희', rating: 4, content: '전반적으로 만족스러웠어요. 대기시간이 조금 있었지만 음식 퀄리티는 훌륭했습니다.', createdAt: '2026-06-05' },
-  { reviewId: 3, userName: '박민준', rating: 5, content: '노웨이트 덕분에 웨이팅 없이 바로 입장했어요!', createdAt: '2026-06-01' },
-];
 
 type RestaurantDetail = {
   id: number;
@@ -102,34 +81,19 @@ type FavoriteSummary = {
 };
 
 
-
-function getDummyRestaurant(id: number) {
-  const cat = CATEGORIES[id % CATEGORIES.length];
-  return {
-    id, name: `${NAMES[id % NAMES.length]} ${(id % 5) + 1}호점`,
-    category: cat, mainMenuName: MENU[cat], imageUrl: UNSPLASH[cat],
-    address: '서울특별시 강남구 테헤란로 123', phoneNumber: '02-1234-5678',
-    description: '신선한 재료로 만드는 정통 요리를 선보입니다.',
-    openTime: '11:30', closeTime: '21:30', closedDays: '매주 월요일',
-    parkingAvailable: 'Y', wifiAvailable: 'Y', multilingualMenuAvailable: 'N',
-    status: 'OPEN', reservationAvailable: 'Y', waitingAvailable: 'Y',
-    avgRating: 4.7, reviewCount: 128,
-  };
-}
-function getDummySlots(date: string) {
-  return ['11:30', '12:00', '12:30', '13:00', '13:30', '18:00', '18:30', '19:00', '19:30', '20:00']
-    .map((time, i) => ({
-      slotId: i + 1, slotDate: date, slotTime: time,
-      totalCount: 4, remainCount: Math.max(0, 4 - (i % 3)),
-      minHeadcount: 1, maxHeadcount: 8,
-    }));
-}
-
 // ─── 유틸 ──────────────────────────────────────────────────────
 
-/** 오늘 날짜를 "YYYY-MM-DD" 형태로 반환 */
+/**
+ * 오늘 날짜를 "YYYY-MM-DD" 형태로 반환.
+ * toISOString()은 UTC 기준이라 KST 00:00~08:59 사이에는 하루 전 날짜를 반환해
+ * 백엔드(KST 기준 LocalDate.now)와 어긋난다. 로컬 캘린더 날짜를 그대로 사용한다.
+ */
 function getTodayStr() {
-  return new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /**
@@ -169,6 +133,7 @@ export default function RestaurantPage() {
   const [selectedDate, setSelectedDate] = useState(getTodayStr); // ← 오늘 날짜 초기값
   const [slots, setSlots] = useState<Slot[]>([]);
   const [slotsUpdatedAt, setSlotsUpdatedAt] = useState<Date | null>(null); // 마지막 갱신 시각
+  const [slotsError, setSlotsError] = useState(false); // 진짜 빈 슬롯 vs 조회 실패 구분
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [headcount, setHeadcount] = useState(2);
   const [reserveLoading, setReserveLoading] = useState(false);
@@ -176,6 +141,7 @@ export default function RestaurantPage() {
   // 웨이팅
   const [waitingSession, setWaitingSession] = useState<WaitingSession | null>(null);
   const [waitingUpdatedAt, setWaitingUpdatedAt] = useState<Date | null>(null);
+  const [waitingSessionError, setWaitingSessionError] = useState(false); // 세션 없음(404) vs 조회 실패 구분
   const [partySize, setPartySize] = useState(2);
   const [waitingLoading, setWaitingLoading] = useState(false);
 
@@ -197,18 +163,13 @@ export default function RestaurantPage() {
   const fetchRestaurant = useCallback(async () => {
     setLoading(true);
     try {
-      if (USE_DUMMY) {
-        await new Promise(r => setTimeout(r, 300));
-        setRestaurant(getDummyRestaurant(Number(id)));
-      } else {
-        const [detailResponse, hoursResponse] = await Promise.all([
-          fetch(`${API_BASE}/restaurants/${id}`),
-          fetch(`${API_BASE}/restaurants/${id}/hours`),
-        ]);
-        if (!detailResponse.ok) throw new Error('식당 정보를 불러오지 못했습니다.');
-        setRestaurant(await detailResponse.json() as RestaurantDetail);
-        setRestaurantHours(hoursResponse.ok ? await hoursResponse.json() as RestaurantHour[] : []);
-      }
+      const [detailResponse, hoursResponse] = await Promise.all([
+        fetch(`${API_BASE}/restaurants/${id}`),
+        fetch(`${API_BASE}/restaurants/${id}/hours`),
+      ]);
+      if (!detailResponse.ok) throw new Error('식당 정보를 불러오지 못했습니다.');
+      setRestaurant(await detailResponse.json() as RestaurantDetail);
+      setRestaurantHours(hoursResponse.ok ? await hoursResponse.json() as RestaurantHour[] : []);
     } finally {
       setLoading(false);
     }
@@ -220,16 +181,11 @@ export default function RestaurantPage() {
    */
   const fetchSlots = useCallback(async (date: string) => {
     try {
-      let raw: Slot[] = [];
-      if (USE_DUMMY) {
-        raw = getDummySlots(date);
-      } else {
-        const res = await fetch(`${API_BASE}/restaurants/${id}/slots?date=${date}`);
-        if (!res.ok) throw new Error('슬롯 정보를 불러오지 못했습니다.');
-        const data = await res.json() as { slots?: Slot[] } | Slot[];
-        // 백엔드 응답: { restaurantId, date, slots: [...] }
-        raw = Array.isArray(data) ? data : (data.slots || []);
-      }
+      const res = await fetch(`${API_BASE}/restaurants/${id}/slots?date=${date}`);
+      if (!res.ok) throw new Error('슬롯 정보를 불러오지 못했습니다.');
+      const data = await res.json() as { slots?: Slot[] } | Slot[];
+      // 백엔드 응답: { restaurantId, date, slots: [...] }
+      const raw = Array.isArray(data) ? data : (data.slots || []);
 
       // 지난 시간 슬롯을 remainCount=0 으로 표시 (서버 값 보존 + UI 비활성화)
       const processed = raw
@@ -240,6 +196,7 @@ export default function RestaurantPage() {
         }));
 
       setSlots(processed);
+      setSlotsError(false);
       setSlotsUpdatedAt(new Date());
 
       // 선택된 슬롯이 이미 마감/과거가 됐으면 선택 해제
@@ -250,32 +207,37 @@ export default function RestaurantPage() {
         return refreshed; // 최신 remainCount 반영
       });
     } catch {
+      // 네트워크 오류 / 5xx 등 — "슬롯 없음"이 아니라 "조회 실패"로 구분해서 보여줘야 한다.
       setSlots([]);
+      setSlotsError(true);
     }
   }, [id]);
 
   /** 웨이팅 세션 조회 */
   const fetchWaitingSession = useCallback(async () => {
     try {
-      if (USE_DUMMY) {
-        setWaitingSession({ status: 'OPEN', currentCount: 7, maxWaitingCount: 30 });
+      const res = await fetch(`${API_BASE}/restaurants/${id}/waiting-session`);
+      if (res.ok) {
+        setWaitingSession(await res.json() as WaitingSession);
+        setWaitingSessionError(false);
+      } else if (res.status === 404) {
+        // 오늘 오픈된 세션이 없는 정상적인 상태 — 에러가 아니다.
+        setWaitingSession(null);
+        setWaitingSessionError(false);
       } else {
-        const res = await fetch(`${API_BASE}/restaurants/${id}/waiting-session`);
-        if (res.ok) {
-          setWaitingSession(await res.json() as WaitingSession);
-        } else {
-          setWaitingSession(null);
-        }
+        setWaitingSession(null);
+        setWaitingSessionError(true);
       }
       setWaitingUpdatedAt(new Date());
     } catch {
+      // 네트워크 오류 등 — "세션 없음"과 구분해서 보여줘야 한다.
       setWaitingSession(null);
+      setWaitingSessionError(true);
     }
   }, [id]);
 
   const fetchReviews = useCallback(async () => {
     try {
-      if (USE_DUMMY) { setReviews(DUMMY_REVIEWS); return; }
       const data = await request<Review[]>(`/restaurants/${id}/reviews`);
       setReviews(data);
     } catch { setReviews([]); }
@@ -283,7 +245,7 @@ export default function RestaurantPage() {
 
   const fetchFavoriteStatus = useCallback(async () => {
     const token = localStorage.getItem('nowait_token');
-    if (!token || USE_DUMMY) return;
+    if (!token) return;
     try {
       const favorites = await request<FavoriteSummary[]>('/users/me/favorites');
       setIsFavorite(favorites.some(f => String(f.restaurantId) === id));
@@ -294,7 +256,7 @@ export default function RestaurantPage() {
   // 로그인한 경우에만 연결. "waiting_called" 이벤트 수신 시 웨이팅 즉시 갱신.
   const connectSse = useCallback(async () => {
     const token = localStorage.getItem('nowait_token');
-    if (!token || USE_DUMMY) return;
+    if (!token) return;
 
     try {
       // 1) 단발 티켓 발급
@@ -374,29 +336,23 @@ export default function RestaurantPage() {
     if (!token) { navigate('/auth'); return; }
     setReserveLoading(true);
     try {
-      if (USE_DUMMY) {
-        await new Promise(r => setTimeout(r, 600));
-        alert(`예약 완료!\n${selectedSlot.slotTime} / ${headcount}명`);
-        navigate('/mypage');
-      } else {
-        const res = await fetch(`${API_BASE}/reservations`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            restaurantId: Number(id),
-            slotId: selectedSlot.slotId, // ← slotId 사용
-            headcount,
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          alert(err.message || '예약에 실패했습니다.');
-          // 실패 후 슬롯 즉시 재조회 (다른 사람이 예약해서 마감됐을 수 있음)
-          void fetchSlots(selectedDate);
-          return;
-        }
-        navigate('/mypage');
+      const res = await fetch(`${API_BASE}/reservations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          restaurantId: Number(id),
+          slotId: selectedSlot.slotId, // ← slotId 사용
+          headcount,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || '예약에 실패했습니다.');
+        // 실패 후 슬롯 즉시 재조회 (다른 사람이 예약해서 마감됐을 수 있음)
+        void fetchSlots(selectedDate);
+        return;
       }
+      navigate('/mypage');
     } finally {
       setReserveLoading(false);
     }
@@ -407,25 +363,19 @@ export default function RestaurantPage() {
     if (!token) { navigate('/auth'); return; }
     setWaitingLoading(true);
     try {
-      if (USE_DUMMY) {
-        await new Promise(r => setTimeout(r, 600));
-        alert(`웨이팅 등록 완료!\n대기번호: ${(waitingSession?.currentCount || 0) + 1}번`);
-        navigate('/mypage');
-      } else {
-        const res = await fetch(`${API_BASE}/restaurants/${id}/waitings`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ partySize }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          alert(err.message || '웨이팅 등록에 실패했습니다.');
-          return;
-        }
-        // 등록 직후 웨이팅 세션 즉시 갱신
-        await fetchWaitingSession();
-        navigate('/mypage');
+      const res = await fetch(`${API_BASE}/restaurants/${id}/waitings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ partySize }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || '웨이팅 등록에 실패했습니다.');
+        return;
       }
+      // 등록 직후 웨이팅 세션 즉시 갱신
+      await fetchWaitingSession();
+      navigate('/mypage');
     } finally {
       setWaitingLoading(false);
     }
@@ -437,26 +387,14 @@ export default function RestaurantPage() {
     if (!token) { navigate('/auth'); return; }
     setReviewLoading(true);
     try {
-      if (USE_DUMMY) {
-        await new Promise(r => setTimeout(r, 500));
-        setReviews(prev => [{
-          reviewId: Date.now(), userName: '나',
-          rating: reviewRating, content: reviewContent,
-          createdAt: getTodayStr(),
-        }, ...prev]);
-        setReviewContent('');
-        setReviewRating(5);
-        alert('리뷰가 등록됐어요!');
-      } else {
-        await request(`/reservations/${reservationToken}/reviews`, {
-          method: 'POST',
-          body: JSON.stringify({ rating: reviewRating, content: reviewContent.trim() }),
-        });
-        setReviewContent('');
-        setReviewRating(5);
-        await fetchReviews();
-        alert('리뷰가 등록됐어요!');
-      }
+      await request(`/reservations/${reservationToken}/reviews`, {
+        method: 'POST',
+        body: JSON.stringify({ rating: reviewRating, content: reviewContent.trim() }),
+      });
+      setReviewContent('');
+      setReviewRating(5);
+      await fetchReviews();
+      alert('리뷰가 등록됐어요!');
     } catch (err) {
       alert(err instanceof Error ? err.message : '리뷰 등록에 실패했습니다.');
     } finally {
@@ -651,7 +589,17 @@ export default function RestaurantPage() {
                   textAlign: 'center', padding: '32px 0', color: 'var(--muted)',
                   fontSize: '0.9rem', fontWeight: 700
                 }}>
-                  📭 해당 날짜에 예약 가능한 슬롯이 없어요
+                  {slotsError ? (
+                    <>
+                      ⚠️ 슬롯 정보를 불러오지 못했어요
+                      <div style={{ marginTop: 10 }}>
+                        <button onClick={() => void fetchSlots(selectedDate)} style={{
+                          padding: '8px 16px', border: '2px solid var(--ink)', borderRadius: 10,
+                          background: '#fff', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer'
+                        }}>다시 시도</button>
+                      </div>
+                    </>
+                  ) : '📭 해당 날짜에 예약 가능한 슬롯이 없어요'}
                 </div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 8 }}>
@@ -809,8 +757,14 @@ export default function RestaurantPage() {
               </>
             ) : (
               <div className="empty-state">
-                <div className="icon">😅</div>
-                <p>운영 중인 웨이팅 세션이 없어요</p>
+                <div className="icon">{waitingSessionError ? '⚠️' : '😅'}</div>
+                <p>{waitingSessionError ? '웨이팅 정보를 불러오지 못했어요' : '운영 중인 웨이팅 세션이 없어요'}</p>
+                {waitingSessionError && (
+                  <button onClick={() => void fetchWaitingSession()} style={{
+                    marginTop: 10, padding: '8px 16px', border: '2px solid var(--ink)', borderRadius: 10,
+                    background: '#fff', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer'
+                  }}>다시 시도</button>
+                )}
               </div>
             )}
           </div>
@@ -824,7 +778,7 @@ export default function RestaurantPage() {
               boxShadow: '5px 5px 0 var(--ink)', padding: 24, marginBottom: 20
             }}>
               <div style={{ fontSize: '1rem', fontWeight: 900, marginBottom: 16 }}>✍️ 리뷰 작성하기</div>
-              {!USE_DUMMY && !reservationToken && (
+              {!reservationToken && (
                 <div style={{
                   padding: '16px 18px', background: 'var(--cream)', borderRadius: 12,
                   border: '2px solid var(--line)', color: 'var(--muted)',
@@ -835,7 +789,7 @@ export default function RestaurantPage() {
                   마이페이지 → 예약 내역 → 방문 완료 예약의 <strong>리뷰 작성</strong> 버튼을 이용해주세요.
                 </div>
               )}
-              {(USE_DUMMY || reservationToken) && (
+              {reservationToken && (
                 <>
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ fontSize: '0.88rem', fontWeight: 800, marginBottom: 8 }}>평점</div>

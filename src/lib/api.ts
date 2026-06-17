@@ -41,6 +41,16 @@ function normalizePath(path: string): string {
   return path.startsWith('/') ? path : `/${path}`;
 }
 
+/** status를 들고 있는 API 에러. 호출부에서 404 등 특정 상태코드를 구분해야 할 때 사용한다. */
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 export async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -62,12 +72,12 @@ export async function request<T>(
     localStorage.removeItem('nowait_token');
     localStorage.removeItem('nowait_user');
     window.location.href = '/auth';
-    throw new Error('인증이 만료됐어요. 다시 로그인해주세요.');
+    throw new ApiError(401, '인증이 만료됐어요. 다시 로그인해주세요.');
   }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || '요청 처리 중 오류가 발생했습니다.');
+    throw new ApiError(res.status, err.message || '요청 처리 중 오류가 발생했습니다.');
   }
 
   if (res.status === 204) {

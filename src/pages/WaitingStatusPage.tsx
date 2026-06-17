@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { API_BASE, request } from '../lib/api';
 
-const USE_DUMMY = false;
 const STATUS_POLL_MS = 5000;
 
 type WaitingStatus = {
@@ -16,19 +15,6 @@ type WaitingStatus = {
   totalWaiting: number;
   estimatedMinutes: number;
   registeredAt: string;
-};
-
-const DUMMY_STATUS = {
-  waitingToken: 'waiting-1',
-  restaurantId: 1,
-  restaurantName: '미진 1호점',
-  waitingNumber: 8,
-  partySize: 2,
-  status: 'WAITING',
-  aheadCount: 3,
-  totalWaiting: 8,
-  estimatedMinutes: 12,
-  registeredAt: '12:30',
 };
 
 function formatDateTime(raw: string): string {
@@ -49,42 +35,33 @@ export default function WaitingStatusPage() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      if (USE_DUMMY) {
-        await new Promise(r => setTimeout(r, 400));
-        // 더미: 랜덤으로 aheadCount 변화
-        setData(prev => prev
-          ? { ...prev, aheadCount: Math.max(0, prev.aheadCount - Math.round(Math.random())) }
-          : DUMMY_STATUS
-        );
-      } else {
-        let waiting: Omit<WaitingStatus, 'restaurantName' | 'totalWaiting' | 'estimatedMinutes'>;
-        try {
-          waiting = await request<Omit<WaitingStatus, 'restaurantName' | 'totalWaiting' | 'estimatedMinutes'>>('/waitings/me');
-        } catch {
-          setData(null);
-          return;
-        }
-
-        if (id && waiting.waitingToken !== id) {
-          setData(null);
-          return;
-        }
-
-        const restaurantResponse = await fetch(`${API_BASE}/restaurants/${waiting.restaurantId}`);
-        const restaurant = restaurantResponse.ok
-          ? await restaurantResponse.json() as { name?: string }
-          : null;
-        const aheadCount = waiting.aheadCount ?? 0;
-        const registeredAt = formatDateTime(waiting.registeredAt);
-        setData({
-          ...waiting,
-          aheadCount,
-          restaurantName: restaurant?.name,
-          totalWaiting: aheadCount + 1,
-          estimatedMinutes: aheadCount * 5,
-          registeredAt,
-        });
+      let waiting: Omit<WaitingStatus, 'restaurantName' | 'totalWaiting' | 'estimatedMinutes'>;
+      try {
+        waiting = await request<Omit<WaitingStatus, 'restaurantName' | 'totalWaiting' | 'estimatedMinutes'>>('/waitings/me');
+      } catch {
+        setData(null);
+        return;
       }
+
+      if (id && waiting.waitingToken !== id) {
+        setData(null);
+        return;
+      }
+
+      const restaurantResponse = await fetch(`${API_BASE}/restaurants/${waiting.restaurantId}`);
+      const restaurant = restaurantResponse.ok
+        ? await restaurantResponse.json() as { name?: string }
+        : null;
+      const aheadCount = waiting.aheadCount ?? 0;
+      const registeredAt = formatDateTime(waiting.registeredAt);
+      setData({
+        ...waiting,
+        aheadCount,
+        restaurantName: restaurant?.name,
+        totalWaiting: aheadCount + 1,
+        estimatedMinutes: aheadCount * 5,
+        registeredAt,
+      });
       setPulse(true);
       setTimeout(() => setPulse(false), 600);
     } finally {
@@ -164,9 +141,7 @@ useEffect(() => {
   async function cancelWaiting() {
     if (!confirm('웨이팅을 취소하시겠어요?')) return;
     try {
-      if (!USE_DUMMY) {
-        await request(`/waitings/${id}/cancel`, { method: 'PATCH' });
-      }
+      await request(`/waitings/${id}/cancel`, { method: 'PATCH' });
       alert('웨이팅이 취소됐어요.');
       navigate('/mypage');
     } catch { alert('취소 중 오류가 발생했습니다.'); }
