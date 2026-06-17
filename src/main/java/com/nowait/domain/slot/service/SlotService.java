@@ -3,6 +3,8 @@ package com.nowait.domain.slot.service;
 import java.time.LocalDate;
 import java.util.List;
 
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
@@ -14,6 +16,7 @@ import com.nowait.domain.reservation.redis.ReservationRedisLuaExecutor;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
 import com.nowait.domain.slot.dto.SlotCreateRequest;
+import com.nowait.domain.slot.dto.SlotDateTime;
 import com.nowait.domain.slot.dto.SlotResponse;
 import com.nowait.domain.slot.dto.SlotUpdateRequest;
 import com.nowait.domain.slot.entity.Slot;
@@ -34,6 +37,7 @@ public class SlotService {
     private final RestaurantRepository restaurantRepository;
     private final RedisTemplate redisTemplate;
     private final ReservationRedisLuaExecutor reservationRedisLuaExecutor;
+    private final CacheManager cacheManager;
 
     // 슬롯 목록 조회
     /**
@@ -53,13 +57,20 @@ public class SlotService {
     
     /**
      * 🎯 [추가] 슬롯 단건 상세 조회 (캐싱 적용)
-     * - 예약 응답을 조립할 때, '슬롯 ID' 딱 하나만 가지고도 
+     * - 예약 응답을 조립할 때, '슬롯 ID' 딱 하나만 가지고도
      * - MySQL을 찌르지 않고 Redis에서 0초 만에 꺼내오기 위한 단건 전용 자판기입니다.
+     *
+     * Slot 엔티티를 그대로 반환/캐싱하면 안 된다: restaurant가 LAZY 연관관계라 캐시 PUT
+     * 시점에 Hibernate 프록시(ByteBuddyInterceptor)까지 직렬화하려다 SerializationException이
+     * 난다 (Jackson은 프록시 내부 필드를 직렬화할 수 없음). 호출부가 필요한 값(날짜/시간)만
+     * 담은 SlotDateTime DTO로 변환해 캐싱한다.
      */
     @Cacheable(value = "slot_detail", key = "#slotId", cacheManager = "cacheManager")
-    public Slot getSlotById(Long slotId) {
+    public SlotDateTime getSlotById(Long slotId) {
         log.info("🔍 [MySQL 관통] 캐시에 단건 정보가 없어서 DB에서 읽어옵니다. 슬롯 ID: {}", slotId);
-        return slotRepository.findById(slotId).orElse(null);
+        return slotRepository.findById(slotId)
+            .map(slot -> new SlotDateTime(slot.getId(), slot.getSlotDate(), slot.getSlotTime()))
+            .orElse(null);
     }
 
     /**
@@ -150,6 +161,7 @@ public class SlotService {
             .orElseThrow(() -> new BusinessException(
                 ErrorCode.SLOT_NOT_FOUND));
         slot.decrease();
+        evictSlotCaches(slot);
     }
 
     // 잔여 수 증가 (예약 취소 시 호출)
@@ -159,5 +171,22 @@ public class SlotService {
             .orElseThrow(() -> new BusinessException(
                 ErrorCode.SLOT_NOT_FOUND));
         slot.increase();
+        evictSlotCaches(slot);
+    }
+
+    /*
+     * remainCount가 바뀐 슬롯의 캐시(목록/단건)를 무효화한다.
+     * cacheManager가 RedisCacheManager이므로 한 Pod에서 evict하면 Redis 자체에서 키가
+     * 지워져 모든 API/Worker Pod에 즉시 반영된다 (로컬 메모리 캐시가 아니라 EKS 멀티 Pod에서도 안전).
+     */
+    private void evictSlotCaches(Slot slot) {
+        Cache slotCache = cacheManager.getCache("slot");
+        if (slotCache != null) {
+            slotCache.evict(slot.getRestaurant().getId() + "_" + slot.getSlotDate());
+        }
+        Cache slotDetailCache = cacheManager.getCache("slot_detail");
+        if (slotDetailCache != null) {
+            slotDetailCache.evict(slot.getId());
+        }
     }
 }

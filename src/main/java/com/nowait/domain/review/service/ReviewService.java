@@ -3,7 +3,8 @@ package com.nowait.domain.review.service;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,21 @@ public class ReviewService {
     private final UserRepository userRepository;
     private final ReservationRepository reservationRepository;
     private final ReservationRedisLuaExecutor reservationRedis;
+    private final CacheManager cacheManager;
+
+    /*
+     * restaurant_reviews 캐시 evict — 직접 evict 호출로 처리한다.
+     * 기존 @CacheEvict(key = "#reservationRedis...") / "#reviewRepository..." 는
+     * #으로는 빈(필드)을 참조할 수 없어(빈 참조는 @beanName 문법 필요) 런타임에
+     * SpelEvaluationException이 났고, delete 케이스는 메서드 바디가 끝난 뒤(beforeInvocation
+     * 기본값 false) 키를 다시 조회해 이미 삭제된 리뷰를 못 찾아 null 키로 evict가 무력화됐다.
+     */
+    private void evictRestaurantReviewsCache(Long restaurantId) {
+        Cache cache = cacheManager.getCache("restaurant_reviews");
+        if (cache != null && restaurantId != null) {
+            cache.evict(restaurantId);
+        }
+    }
 
     /**
      * 리뷰 작성 — reservationToken(UUID) 기반.
@@ -42,7 +58,6 @@ public class ReviewService {
      *   - DB에 레코드 자체가 없는 경우(극히 드문 Worker 지연) → 재시도 안내 메시지
      */
     @Transactional
-    @CacheEvict(value = "restaurant_reviews", key = "#reservationRedis.findByToken(#reservationToken).restaurantId()", cacheManager = "cacheManager")
     public ReviewResponse createReview(Long userId, String reservationToken, ReviewCreateRequest request) {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
@@ -88,7 +103,9 @@ public class ReviewService {
             .content(request.content())
             .visitedAt(visitedAt)
             .build();
-        return ReviewResponse.from(reviewRepository.save(review));
+        ReviewResponse response = ReviewResponse.from(reviewRepository.save(review));
+        evictRestaurantReviewsCache(reservation.getRestaurant().getId());
+        return response;
     }
 
     /**
@@ -119,7 +136,6 @@ public class ReviewService {
      * - 사장님이 지우거나 유저가 수정하면 바구니 안의 특정 식당 캐시를 정확히 타격해서 리셋합니다.
      */
     @Transactional
-    @CacheEvict(value = "restaurant_reviews", key = "#reviewRepository.findById(#reviewId).orElse(null)?.restaurant?.id", cacheManager = "cacheManager")
     public ReviewResponse updateReview(Long userId, Long reviewId, ReviewCreateRequest request) {
         Review review = reviewRepository.findById(reviewId)
             .orElseThrow(() -> new BusinessException(ErrorCode.REVIEW_NOT_FOUND));
@@ -129,6 +145,7 @@ public class ReviewService {
         }
 
         review.update(request.rating(), request.content());
+        evictRestaurantReviewsCache(review.getRestaurant().getId());
         return ReviewResponse.from(review);
     }
 
@@ -136,7 +153,6 @@ public class ReviewService {
      * 🗑️ 리뷰 삭제 (본인만)
      */
     @Transactional
-    @CacheEvict(value = "restaurant_reviews", key = "#reviewRepository.findById(#reviewId).orElse(null)?.restaurant?.id", cacheManager = "cacheManager")
     public void deleteReview(Long userId, Long reviewId) {
         Review review = reviewRepository.findById(reviewId)
             .orElseThrow(() -> new BusinessException(ErrorCode.REVIEW_NOT_FOUND));
@@ -145,6 +161,8 @@ public class ReviewService {
             throw new BusinessException(ErrorCode.REVIEW_ACCESS_DENIED);
         }
 
+        Long restaurantId = review.getRestaurant().getId();
         reviewRepository.delete(review);
+        evictRestaurantReviewsCache(restaurantId);
     }
 }

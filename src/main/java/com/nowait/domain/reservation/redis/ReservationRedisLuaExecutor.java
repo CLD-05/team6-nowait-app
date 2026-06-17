@@ -9,6 +9,7 @@ import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -69,7 +70,7 @@ public class ReservationRedisLuaExecutor {
   /* 예약 생성 — 성공 시 (token, createdAt) 반환 */
   public CreateResult create(
       Long userId, Long restaurantId, Long slotId,
-      int headcount, int slotCapacity, long reservationTimeMillis) {
+      int headcount, int slotCapacity, long reservationTimeMillis, LocalDate slotDate) {
 
     String token = UUID.randomUUID().toString();
     long createdAt = System.currentTimeMillis();
@@ -82,7 +83,8 @@ public class ReservationRedisLuaExecutor {
         ReservationRedisKeys.NOSHOW_CANDIDATES,
         ReservationRedisKeys.PENDING_SYNC,
         ReservationRedisKeys.userTokens(userId),
-        ReservationRedisKeys.restaurantTokens(restaurantId)
+        ReservationRedisKeys.restaurantTokens(restaurantId),
+        ReservationRedisKeys.userRestaurantDate(userId, restaurantId, slotDate)
     );
 
     List<?> result = redisTemplate.execute(
@@ -277,6 +279,7 @@ public class ReservationRedisLuaExecutor {
 
     return switch (code) {
       case "DUPLICATE_RESERVATION"     -> new BusinessException(ErrorCode.DUPLICATE_RESERVATION);
+      case "DUPLICATE_RESERVATION_SAME_DAY" -> new BusinessException(ErrorCode.DUPLICATE_RESERVATION_SAME_DAY);
       case "SLOT_FULL"                 -> new BusinessException(ErrorCode.SLOT_FULL);
       case "RESERVATION_NOT_FOUND"     -> new BusinessException(ErrorCode.RESERVATION_NOT_FOUND);
       case "ACCESS_DENIED"             -> new BusinessException(ErrorCode.RESERVATION_ACCESS_DENIED);

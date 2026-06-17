@@ -30,6 +30,7 @@ import com.nowait.domain.restaurant.repository.RestaurantRepository;
 import com.nowait.domain.restaurant.service.RestaurantService;
 import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
+import com.nowait.domain.slot.dto.SlotDateTime;
 import com.nowait.domain.slot.entity.Slot;
 import com.nowait.domain.slot.repository.SlotRepository;
 import com.nowait.domain.slot.service.SlotService;
@@ -84,7 +85,12 @@ public class ReservationService {
         Slot slot = slotRepository.findById(request.slotId())
             .orElseThrow(() -> new BusinessException(ErrorCode.SLOT_NOT_FOUND));
 
-        if (restaurant.getStatus() != RestaurantStatus.OPEN) {
+        /*
+         * 예약은 "지금 당장"이 아니라 미래 슬롯을 잡는 행위라, 점주가 오늘 "영업 종료(CLOSED)"로
+         * 표시해도(예: 영업시간 마감, 임시 부재) 예약 자체는 막지 않는다. 폐업(PERMANENTLY_CLOSED)만
+         * 막는다. "지금 당장" 줄을 서는 웨이팅은 WaitingService에서 OPEN이 아니면 그대로 차단한다.
+         */
+        if (restaurant.getStatus() == RestaurantStatus.PERMANENTLY_CLOSED) {
             throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
         }
         if ("N".equals(restaurant.getReservationAvailable())) {
@@ -127,7 +133,8 @@ public class ReservationService {
             slot.getId(),
             headcount,
             slot.getTotalCount(),
-            reservationTimeMillis
+            reservationTimeMillis,
+            slot.getSlotDate()
         );
 
         log.info("Reservation created. token={}, userId={}, slotId={}",
@@ -461,10 +468,10 @@ public class ReservationService {
         
         // 🎯 [개선] 레포지토리 직접 조회를 지우고, 캐시 문지기가 있는 slotService를 거치도록 수정합니다!
         // 이제 슬롯 날짜/시간 정보도 MySQL을 치지 않고 Redis 캐시 자판기에서 쏙 꺼내옵니다. (MySQL 쿼리 X)
-        Slot slot = slotService.getSlotById(data.slotId());
-        
-        LocalDate slotDate = slot == null ? null : slot.getSlotDate();
-        LocalTime slotTime = slot == null ? null : slot.getSlotTime();
+        SlotDateTime slot = slotService.getSlotById(data.slotId());
+
+        LocalDate slotDate = slot == null ? null : slot.slotDate();
+        LocalTime slotTime = slot == null ? null : slot.slotTime();
         
         return ReservationResponse.fromRedis(token, data, restaurantName, userName, slotDate, slotTime);
     }

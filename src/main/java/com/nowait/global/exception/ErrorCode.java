@@ -51,6 +51,7 @@ public enum ErrorCode {
     SLOT_FULL(HttpStatus.CONFLICT, "SL409", "해당 슬롯의 예약이 마감되었습니다."),
     DUPLICATE_SLOT(HttpStatus.CONFLICT, "SL410", "이미 존재하는 슬롯입니다."),
     DUPLICATE_RESERVATION(HttpStatus.CONFLICT, "RS409", "이미 해당 슬롯에 예약이 존재합니다."),
+    DUPLICATE_RESERVATION_SAME_DAY(HttpStatus.CONFLICT, "RS413", "해당 매장에 같은 날짜로 이미 예약이 있습니다."),
     ALREADY_CANCELLED_RESERVATION(HttpStatus.CONFLICT, "RS410", "이미 취소된 예약입니다."),
     CANNOT_CANCEL_RESERVATION(HttpStatus.CONFLICT, "RS411", "취소할 수 없는 예약 상태입니다."),
     RESERVATION_ALREADY_REJECTED(HttpStatus.CONFLICT, "RS412", "이미 거부된 예약입니다."),

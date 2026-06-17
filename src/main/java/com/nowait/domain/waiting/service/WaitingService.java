@@ -178,7 +178,7 @@ public class WaitingService {
     // DB 이력 (Worker sync 분) — 활성 토큰과 중복 제거
     waitingRepository.findByUserIdOrderByRegisteredAtDesc(loginUserId)
         .stream()
-        .filter(w -> activeTokens == null || !activeTokens.equals(w.getWaitingToken()))
+        .filter(w -> activeTokens == null || !activeTokens.contains(w.getWaitingToken()))
         .map(WaitingResponse::from)
         .forEach(result::add);
 
