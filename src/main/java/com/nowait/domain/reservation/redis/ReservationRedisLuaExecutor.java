@@ -56,6 +56,16 @@ public class ReservationRedisLuaExecutor {
     this.rejectScript = rejectScript;
   }
 
+ //========= [추가] 점주가 슬롯 생성 시 Redis 카운터 초기화 및 7일 TTL 부여 =========
+ public void initSlotCount(Long slotId, int totalCount) {
+   String key = ReservationRedisKeys.slotCount(slotId);
+   
+   // 초기 예약 찬 팀 수는 '0'으로 세팅
+   redisTemplate.opsForValue().set(key, "0", RESERVATION_TTL);
+   
+   log.info("Redis slot counter initialized via Executor. key={}, slotId={}", key, slotId);
+ }
+  
   /* 예약 생성 — 성공 시 (token, createdAt) 반환 */
   public CreateResult create(
       Long userId, Long restaurantId, Long slotId,

@@ -3,9 +3,6 @@ package com.nowait.domain.reservation.service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.ZoneId;
-
-import com.nowait.global.common.TimeZones;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -38,6 +35,7 @@ import com.nowait.domain.slot.repository.SlotRepository;
 import com.nowait.domain.slot.service.SlotService;
 import com.nowait.domain.user.entity.User;
 import com.nowait.domain.user.repository.UserRepository;
+import com.nowait.global.common.TimeZones;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
@@ -66,7 +64,6 @@ public class ReservationService {
     private final RestaurantRepository restaurantRepository;
     private final RestaurantHourRepository restaurantHourRepository;
     private final SlotRepository slotRepository;
-    private final SlotService slotService;
     private final UserRepository userRepository;
     private final ReservationRedisLuaExecutor reservationRedis;
     private final StringRedisTemplate redisTemplate;
