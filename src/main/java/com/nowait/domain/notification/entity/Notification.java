@@ -1,11 +1,13 @@
 package com.nowait.domain.notification.entity;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import com.nowait.domain.notification.type.NotificationType;
 import com.nowait.domain.user.entity.User;
 import com.nowait.global.common.BaseTimeEntity;
+
 import jakarta.persistence.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;

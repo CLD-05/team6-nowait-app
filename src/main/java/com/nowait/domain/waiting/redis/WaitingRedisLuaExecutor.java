@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -66,7 +67,7 @@ public class WaitingRedisLuaExecutor {
         WaitingRedisKeys.count(sessionId),
         WaitingRedisKeys.queue(sessionId),
         WaitingRedisKeys.token(token),
-        WaitingRedisKeys.userActive(userId),
+        WaitingRedisKeys.userActive(userId, restaurantId),
         WaitingRedisKeys.PENDING_SYNC
     );
 
@@ -91,12 +92,12 @@ public class WaitingRedisLuaExecutor {
   }
 
   /* 취소 — 본인 검증 포함 */
-  public void cancel(String token, Long userId, Long sessionId) {
+  public void cancel(String token, Long userId, Long sessionId, Long restaurantId) {
     List<String> keys = List.of(
         WaitingRedisKeys.token(token),
         WaitingRedisKeys.queue(sessionId),
         WaitingRedisKeys.count(sessionId),
-        WaitingRedisKeys.userActive(userId),
+        WaitingRedisKeys.userActive(userId, restaurantId),
         WaitingRedisKeys.PENDING_SYNC
     );
 
@@ -113,12 +114,12 @@ public class WaitingRedisLuaExecutor {
   }
 
   /* 입장 완료 (점주) */
-  public void enter(String token, Long sessionId, Long userId) {
+  public void enter(String token, Long sessionId, Long userId, Long restaurantId) {
     List<String> keys = List.of(
         WaitingRedisKeys.token(token),
         WaitingRedisKeys.queue(sessionId),
         WaitingRedisKeys.count(sessionId),
-        WaitingRedisKeys.userActive(userId),
+        WaitingRedisKeys.userActive(userId, restaurantId),
         WaitingRedisKeys.PENDING_SYNC
     );
 
@@ -152,12 +153,12 @@ public class WaitingRedisLuaExecutor {
   }
 
   /* 점주 강제 취소 (본인 검증 없음 — 호출 측에서 권한 검증) */
-  public void cancelByOwner(String token, Long sessionId, Long userId) {
+  public void cancelByOwner(String token, Long sessionId, Long userId, Long restaurantId) {
     List<String> keys = List.of(
         WaitingRedisKeys.token(token),
         WaitingRedisKeys.queue(sessionId),
         WaitingRedisKeys.count(sessionId),
-        WaitingRedisKeys.userActive(userId),
+        WaitingRedisKeys.userActive(userId, restaurantId),
         WaitingRedisKeys.PENDING_SYNC
     );
 
@@ -222,9 +223,14 @@ public class WaitingRedisLuaExecutor {
     return value == null ? 0 : Integer.parseInt(value);
   }
 
-  /* 사용자의 활성 웨이팅 토큰 (없으면 null) */
-  public String findActiveTokenOf(Long userId) {
-    return redisTemplate.opsForValue().get(WaitingRedisKeys.userActive(userId));
+  /* 사용자의 모든 활성 웨이팅 토큰 (여러 식당 동시 등록 가능) */
+  public List<String> findActiveTokensOf(Long userId) {
+    Set<String> keys = redisTemplate.keys(WaitingRedisKeys.userActivePattern(userId));
+    if (keys == null || keys.isEmpty()) return Collections.emptyList();
+
+    List<String> tokens = redisTemplate.opsForValue().multiGet(keys);
+    if (tokens == null) return Collections.emptyList();
+    return tokens.stream().filter(Objects::nonNull).toList();
   }
 
   /* 세션의 활성 웨이팅 토큰 목록 (등록 순서) */

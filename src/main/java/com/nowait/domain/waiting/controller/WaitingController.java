@@ -35,9 +35,9 @@ public class WaitingController {
   /* 사용자: 내 웨이팅 조회 (단건 — WaitingStatusPage 용) */
   @PreAuthorize("isAuthenticated()")
   @GetMapping("/api/v1/waitings/me")
-  public ResponseEntity<WaitingResponse> getMyWaiting(
+  public ResponseEntity<List<WaitingResponse>> getMyWaitings(
       @AuthenticationPrincipal CustomUserDetails principal) {
-    return ResponseEntity.ok(waitingService.getMyWaiting(principal.getUserId()));
+    return ResponseEntity.ok(waitingService.getMyWaitings(principal.getUserId()));
   }
 
   /* 사용자: 내 웨이팅 전체 이력 조회 (마이페이지 탭 용) */

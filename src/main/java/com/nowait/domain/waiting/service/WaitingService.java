@@ -141,22 +141,28 @@ public class WaitingService {
    * Worker 가 꺼져 있으면 DB 부분은 비어 있을 수 있다.
    */
   public List<WaitingResponse> getMyWaitingHistory(Long loginUserId) {
-    String activeToken = waitingRedis.findActiveTokenOf(loginUserId);
+    List<String> activeTokens = waitingRedis.findActiveTokensOf(loginUserId);
     List<WaitingResponse> result = new ArrayList<>();
 
     // 현재 Redis 에 있는 활성 웨이팅 (있으면 맨 앞에)
-    if (activeToken != null) {
-      WaitingTokenData data = waitingRedis.findByToken(activeToken);
-      if (data != null) {
-        long ahead = waitingRedis.aheadCount(data.sessionId(), activeToken);
-        result.add(WaitingResponse.of(activeToken, data, ahead));
-      }
+    if (activeTokens != null && !activeTokens.isEmpty()) {
+        List<WaitingResponse> activeResponses = activeTokens.stream()
+            .map(token -> {
+                WaitingTokenData data = waitingRedis.findByToken(token); // 🔴 String 타입 호환 완벽!
+                if (data == null) return null;
+                long ahead = waitingRedis.aheadCount(data.sessionId(), token); // 🔴 String 타입 호환 완벽!
+                return WaitingResponse.of(token, data, ahead);
+            })
+            .filter(Objects::nonNull)
+            .toList();
+        
+        result.addAll(activeResponses); // 활성 웨이팅을 맨 앞에 추가
     }
 
     // DB 이력 (Worker sync 분) — 활성 토큰과 중복 제거
     waitingRepository.findByUserIdOrderByRegisteredAtDesc(loginUserId)
         .stream()
-        .filter(w -> activeToken == null || !activeToken.equals(w.getWaitingToken()))
+        .filter(w -> activeTokens == null || !activeTokens.equals(w.getWaitingToken()))
         .map(WaitingResponse::from)
         .forEach(result::add);
 
@@ -167,17 +173,19 @@ public class WaitingService {
    * 사용자: 내 활성 웨이팅 조회
    * GET /api/waitings/me
    */
-  public WaitingResponse getMyWaiting(Long loginUserId) {
-    String token = waitingRedis.findActiveTokenOf(loginUserId);
-    if (token == null) {
-      throw new BusinessException(ErrorCode.WAITING_NOT_FOUND);
-    }
-    WaitingTokenData data = waitingRedis.findByToken(token);
-    if (data == null) {
-      throw new BusinessException(ErrorCode.WAITING_NOT_FOUND);
-    }
-    long ahead = waitingRedis.aheadCount(data.sessionId(), token);
-    return WaitingResponse.of(token, data, ahead);
+  public List<WaitingResponse> getMyWaitings(Long loginUserId) {
+    List<String> tokens = waitingRedis.findActiveTokensOf(loginUserId);
+    if (tokens.isEmpty()) return List.of();
+
+    return tokens.stream()
+        .map(token -> {
+          WaitingTokenData data = waitingRedis.findByToken(token);
+          if (data == null) return null;
+          long ahead = waitingRedis.aheadCount(data.sessionId(), token);
+          return WaitingResponse.of(token, data, ahead);
+        })
+        .filter(Objects::nonNull)
+        .toList();
   }
 
   /*
@@ -188,7 +196,7 @@ public class WaitingService {
   public WaitingResponse cancelByUser(String token, Long loginUserId) {
     WaitingTokenData data = findTokenDataOrThrow(token);
 
-    waitingRedis.cancel(token, loginUserId, data.sessionId());
+    waitingRedis.cancel(token, loginUserId, data.sessionId(), data.restaurantId());
     log.info("Waiting cancelled by user. token={}, userId={}", token, loginUserId);
 
     notifyNearCallIfThreshold(data.sessionId());
@@ -272,7 +280,7 @@ public class WaitingService {
     WaitingTokenData data = findTokenDataOrThrow(token);
     verifyOwnership(data.restaurantId(), loginUserId);
 
-    waitingRedis.cancelByOwner(token, data.sessionId(), data.userId());
+    waitingRedis.cancelByOwner(token, data.sessionId(), data.userId(), data.restaurantId());
     log.info("Waiting cancelled by owner. token={}", token);
 
     notifyNearCallIfThreshold(data.sessionId());
@@ -291,7 +299,7 @@ public class WaitingService {
     WaitingTokenData data = findTokenDataOrThrow(token);
     verifyOwnership(data.restaurantId(), loginUserId);
 
-    waitingRedis.enter(token, data.sessionId(), data.userId());
+    waitingRedis.enter(token, data.sessionId(), data.userId(), data.restaurantId());
     log.info("Waiting entered. token={}", token);
 
     notifyNearCallIfThreshold(data.sessionId());

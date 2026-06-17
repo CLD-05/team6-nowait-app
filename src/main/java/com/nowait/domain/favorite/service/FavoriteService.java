@@ -16,6 +16,7 @@ import com.nowait.domain.user.entity.User;
 import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
+import com.nowait.global.s3.S3Service;
 
 import lombok.RequiredArgsConstructor;
 
@@ -27,6 +28,7 @@ public class FavoriteService {
 	private final FavoriteRepository favoriteRepository;
 	private final UserRepository userRepository;
 	private final RestaurantRepository restaurantRepository;
+	private final S3Service s3Service;
 	
 	/**
      * ⭐ [핵심 기능 1] 즐겨찾기 추가
@@ -68,7 +70,10 @@ public class FavoriteService {
 		List<Favorite> favorites = favoriteRepository.findAllByUser(user);
 		
 		return favorites.stream()
-				.map(FavoriteResponse::new)
+				.map(f -> new FavoriteResponse(
+					f,
+					s3Service.resolveReadableImageUrl(f.getRestaurant().getImageUrl())
+				))
 				.collect(Collectors.toList());
 	}
 

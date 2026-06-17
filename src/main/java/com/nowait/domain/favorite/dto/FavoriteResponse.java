@@ -18,15 +18,15 @@ public class FavoriteResponse {
 	private final String imageUrl;
 	private final LocalDateTime createdAt;
 	
-	public FavoriteResponse(Favorite favorite) {
-		
+	public FavoriteResponse(Favorite favorite, String resolvedImageUrl) {
+
 		this.favoriteId = favorite.getFavoriteId();
 		this.restaurantId = favorite.getRestaurant().getId();
 		this.restaurantName = favorite.getRestaurant().getName();
 		this.mainCategory = favorite.getRestaurant().getCategory().name();
 		this.category = favorite.getRestaurant().getCategory().name();
 		this.mainMenuName = favorite.getRestaurant().getMainMenuName();
-		this.imageUrl = favorite.getRestaurant().getImageUrl();
+		this.imageUrl = resolvedImageUrl;
 		this.createdAt = favorite.getCreatedAt();
 	}
 
