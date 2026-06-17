@@ -127,19 +127,31 @@ public class ReservationSyncHandler {
     }
   }
 
-  /* 슬롯 정원 차감 — 0 이하 방어 (Redis 가 이미 검증했지만 DB 안전망) */
+  /*
+   * 슬롯 정원 차감 — 0 이하 방어 (Redis 가 이미 검증했지만 DB 안전망).
+   *
+   * Worker는 여러 Pod/스레드가 서로 다른 token을 동시에 처리할 수 있는데, 같은 slot에
+   * 대한 두 건이 동시에 들어오면 락 없이 읽은 Slot을 그대로 mutate할 경우 두 트랜잭션이
+   * 모두 같은 옛 remainCount를 읽고 같은 값으로 갱신해버리는 lost update가 날 수 있다.
+   * SlotService가 이미 갖고 있는 PESSIMISTIC_WRITE 조회 경로로 다시 읽어서 행 락을 건 뒤
+   * 갱신한다 (동일 영속성 컨텍스트라 엔티티 식별자는 그대로 유지된다).
+   */
   private void decreaseSlotSafely(Slot slot) {
     try {
-      slot.decrease();
+      Slot locked = slotRepository.findByIdWithLock(slot.getId())
+          .orElseThrow(() -> new IllegalStateException("Slot not found. slotId=" + slot.getId()));
+      locked.decrease();
     } catch (Exception e) {
       log.warn("Failed to decrease slot. slotId={} reason={}", slot.getId(), e.getMessage());
     }
   }
 
-  /* 슬롯 정원 복구 — totalCount 초과 방어 */
+  /* 슬롯 정원 복구 — totalCount 초과 방어. 락 필요성은 decreaseSlotSafely와 동일. */
   private void increaseSlotSafely(Slot slot) {
     try {
-      slot.increase();
+      Slot locked = slotRepository.findByIdWithLock(slot.getId())
+          .orElseThrow(() -> new IllegalStateException("Slot not found. slotId=" + slot.getId()));
+      locked.increase();
     } catch (Exception e) {
       log.warn("Failed to increase slot. slotId={} reason={}", slot.getId(), e.getMessage());
     }

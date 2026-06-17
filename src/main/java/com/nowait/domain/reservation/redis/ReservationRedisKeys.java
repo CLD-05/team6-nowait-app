@@ -20,40 +20,56 @@ public final class ReservationRedisKeys {
   private ReservationRedisKeys() {
   }
 
+  /*
+   * 환경 prefix — REDIS_KEY_PREFIX 환경변수가 설정된 경우에만 키 앞에 붙는다.
+   * dev/prod는 서로 다른 ElastiCache 인스턴스를 쓰지만(별도 Terraform root module),
+   * 로컬 테스트나 k6 부하테스트가 같은 Redis를 공유하는 경우의 키 충돌을 막기 위한
+   * 방어 장치. 설정하지 않으면 기존과 동일하게 동작한다.
+   */
+  private static final String PREFIX = resolvePrefix();
+
+  private static String resolvePrefix() {
+    String raw = System.getenv("REDIS_KEY_PREFIX");
+    if (raw == null || raw.isBlank()) {
+      return "";
+    }
+    return raw.endsWith(":") ? raw : raw + ":";
+  }
+
   /* 토큰 단위 Hash */
   public static String token(String token) {
-    return "reservation:token:" + token;
+    return PREFIX + "reservation:token:" + token;
   }
 
   /* 슬롯 단위 키 */
   public static String slotCount(Long slotId) {
-    return "reservation:slot:" + slotId + ":count";
+    return PREFIX + "reservation:slot:" + slotId + ":count";
   }
 
   public static String slotQueue(Long slotId) {
-    return "reservation:slot:" + slotId + ":queue";
+    return PREFIX + "reservation:slot:" + slotId + ":queue";
   }
 
   /* 사용자-슬롯 페어 (동일 슬롯 중복 방지) */
   public static String userSlot(Long userId, Long slotId) {
-    return "reservation:user-slot:" + userId + ":" + slotId;
+    return PREFIX + "reservation:user-slot:" + userId + ":" + slotId;
   }
 
   /* 사용자별 전체 토큰 목록 ZSET (score = createdAt millis) */
   public static String userTokens(Long userId) {
-    return "reservation:user:" + userId + ":tokens";
+    return PREFIX + "reservation:user:" + userId + ":tokens";
   }
 
   /* 매장별 전체 토큰 목록 ZSET (score = createdAt millis) */
   public static String restaurantTokens(Long restaurantId) {
-    return "reservation:restaurant:" + restaurantId + ":tokens";
+    return PREFIX + "reservation:restaurant:" + restaurantId + ":tokens";
   }
 
   /* 노쇼 스케줄러 ZSET (score = 예약 시각 millis) */
-  public static final String NOSHOW_CANDIDATES = "reservation:noshow-candidates";
+  public static final String NOSHOW_CANDIDATES = PREFIX + "reservation:noshow-candidates";
 
   /* Worker 큐 */
-  public static final String PENDING_SYNC = "reservation:pending-sync";
-  public static final String PROCESSING = "reservation:processing";
-  public static final String DEAD_LETTER = "reservation:dead-letter";
+  public static final String PENDING_SYNC = PREFIX + "reservation:pending-sync";
+  public static final String PROCESSING = PREFIX + "reservation:processing";
+  public static final String DEAD_LETTER = PREFIX + "reservation:dead-letter";
 }

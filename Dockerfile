@@ -18,9 +18,9 @@ WORKDIR /app
 RUN addgroup -S nowait && adduser -S nowait -G nowait
 USER nowait
 
-# 빌드 스테이지에서 생성된 최종 실행 JAR 파일만 추출하여 복사
-# (target 폴더 내 서브 jar 파일들과의 충돌을 방지하기 위해 구체적인 명명 패턴 사용 권장)
-COPY --from=builder /app/target/*-[0-9]*.jar app.jar
+# pom.xml의 <finalName>app</finalName>으로 버전 문자열 없이 고정된 실행 JAR만 복사한다.
+# (target/app.jar.original 같은 plain jar와 절대 헷갈리지 않도록 정확한 파일명을 명시한다)
+COPY --from=builder /app/target/app.jar app.jar
 
 # EKS 환경에서 컨테이너 메모리 제한(Cgroups)을 JVM이 올바르게 인식하도록 GC 및 힙 비율 기본 옵션 설정
 ENV JAVA_OPTS="-XX:+UseG1GC -XX:MaxRAMPercentage=75.0"
