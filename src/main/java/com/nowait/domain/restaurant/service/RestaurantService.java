@@ -133,16 +133,40 @@ public class RestaurantService {
 	public void updateRestaurant(Long restaurantId, RestaurantUpdateRequest request, Long ownerId) {
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
-		
+
 		if (!restaurant.getOwnerId().equals(ownerId)) {
 			throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
 		}
 
+		// presigned URL이 들어오더라도 imageKey만 저장한다. (DB image_url 컬럼 length=500 초과 방지)
+		String normalizedImageUrl = normalizeImageUrl(request.getImageUrl());
+
 		restaurant.updateDetails(
 				request.getName(), request.getCategory(), request.getAddress(), request.getPhoneNumber(),
-				request.getDescription(), request.getImageUrl(), request.getMainMenuName(),
+				request.getDescription(), normalizedImageUrl, request.getMainMenuName(),
 				request.getParkingAvailable(), request.getWifiAvailable(), request.getMultilingualMenuAvailable(),
 				request.getStatus(), request.getReservationAvailable(), request.getWaitingAvailable());
+	}
+
+	/**
+	 * 프론트가 어떤 형태(imageKey / static 경로 / S3 직접 URL / presigned GET URL)를 보내도
+	 * DB에는 항상 짧은 imageKey 형태로만 저장하도록 정규화한다.
+	 * 기존 정책: imageKey = "restaurants/{id}/{uuid}.{ext}" 또는 "/images/..." (seed).
+	 */
+	private String normalizeImageUrl(String imageUrl) {
+		if (imageUrl == null || imageUrl.isBlank()) {
+			return imageUrl;
+		}
+		if (imageUrl.startsWith("/images/") || imageUrl.startsWith("restaurants/")) {
+			return imageUrl;
+		}
+		int amazonIdx = imageUrl.indexOf(".amazonaws.com/");
+		if (amazonIdx > 0) {
+			String afterDomain = imageUrl.substring(amazonIdx + ".amazonaws.com/".length());
+			int q = afterDomain.indexOf('?');
+			return q > 0 ? afterDomain.substring(0, q) : afterDomain;
+		}
+		return imageUrl;
 	}
 	
 	@Transactional
