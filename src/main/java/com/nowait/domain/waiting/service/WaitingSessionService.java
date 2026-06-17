@@ -7,6 +7,7 @@ import com.nowait.domain.waiting.dto.WaitingSessionResponse;
 import com.nowait.domain.waiting.entity.WaitingSession;
 import com.nowait.domain.waiting.redis.WaitingRedisLuaExecutor;
 import com.nowait.domain.waiting.repository.WaitingSessionRepository;
+import com.nowait.global.common.TimeZones;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +31,7 @@ public class WaitingSessionService {
 
   public WaitingSessionResponse getTodaySession(Long restaurantId) {
     WaitingSession session = waitingSessionRepository
-        .findByRestaurantIdAndSessionDate(restaurantId, LocalDate.now())
+        .findByRestaurantIdAndSessionDate(restaurantId, LocalDate.now(TimeZones.KST))
         .orElseThrow(() -> new BusinessException(ErrorCode.WAITING_SESSION_NOT_FOUND));
     /* currentCount 는 Redis 가 source of truth — 응답 시점에 덮어쓰기 */
     int liveCount = waitingRedis.getCount(session.getId());
@@ -42,13 +43,13 @@ public class WaitingSessionService {
       WaitingSessionOpenRequest request) {
     verifyOwnership(restaurantId, loginUserId);
 
-    LocalDate today = LocalDate.now();
+    LocalDate today = LocalDate.now(TimeZones.KST);
     if (waitingSessionRepository.existsByRestaurantIdAndSessionDate(restaurantId, today)) {
       throw new BusinessException(ErrorCode.WAITING_SESSION_ALREADY_EXISTS);
     }
 
     WaitingSession session = WaitingSession.open(
-        restaurantId, today, request.maxWaitingCount(), LocalDateTime.now());
+        restaurantId, today, request.maxWaitingCount(), LocalDateTime.now(TimeZones.KST));
     waitingSessionRepository.save(session);
     waitingRedis.initSession(session.getId());
 
@@ -78,7 +79,7 @@ public class WaitingSessionService {
   public WaitingSessionResponse closeSession(Long sessionId, Long loginUserId) {
     WaitingSession session = findSessionOrThrow(sessionId);
     verifyOwnership(session.getRestaurantId(), loginUserId);
-    session.close(LocalDateTime.now());
+    session.close(LocalDateTime.now(TimeZones.KST));
     waitingRedis.clearSession(sessionId);
     log.info("Waiting session closed. sessionId={}", sessionId);
     return WaitingSessionResponse.from(session, 0);

@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+
+import com.nowait.global.common.TimeZones;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -233,7 +235,7 @@ public class ReservationService {
         reservation.syncFromRedis(
             ReservationStatus.CANCELLED,
             reservation.getVisitedAt(),
-            LocalDateTime.now(),
+            LocalDateTime.now(TimeZones.KST),
             reservation.getNoShowAt()
         );
         
@@ -472,7 +474,7 @@ public class ReservationService {
 
     private static long toEpochMillis(LocalDate date, LocalTime time) {
         return LocalDateTime.of(date, time)
-            .atZone(ZoneId.systemDefault())
+            .atZone(TimeZones.KST)
             .toInstant()
             .toEpochMilli();
     }
