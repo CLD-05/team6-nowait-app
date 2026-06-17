@@ -6,9 +6,11 @@ import java.util.List;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.nowait.domain.reservation.redis.ReservationRedisLuaExecutor;
 import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
 import com.nowait.domain.slot.dto.SlotCreateRequest;
@@ -30,6 +32,8 @@ public class SlotService {
 
     private final SlotRepository slotRepository;
     private final RestaurantRepository restaurantRepository;
+    private final RedisTemplate redisTemplate;
+    private final ReservationRedisLuaExecutor reservationRedisLuaExecutor;
 
     // 슬롯 목록 조회
     /**
@@ -65,20 +69,16 @@ public class SlotService {
     @Transactional
     @Caching(evict = {
             @CacheEvict(value = "slot", allEntries = true, cacheManager = "cacheManager"),
-            @CacheEvict(value = "slot_detail", allEntries = true, cacheManager = "cacheManager") // 🎯 추가!
+            @CacheEvict(value = "slot_detail", allEntries = true, cacheManager = "cacheManager") // 🎯 팀원 최신 코드 유지
         })
-    public SlotResponse.SlotInfo createSlot(Long restaurantId,
-                                             SlotCreateRequest request) {
-    	log.info("💥 [Cache Evict] 새 슬롯 생성으로 인해 캐시를 삭제합니다. 날짜: {}", request.getSlotDate());
-        Restaurant restaurant = restaurantRepository
-            .findById(restaurantId)
-            .orElseThrow(() -> new BusinessException(
-                ErrorCode.RESTAURANT_NOT_FOUND));  // 수정
-
+    public SlotResponse.SlotInfo createSlot(Long restaurantId, SlotCreateRequest request) {
+        log.info("💥 [Cache Evict] 새 슬롯 생성으로 인해 캐시를 삭제합니다. 날짜: {}", request.getSlotDate());
+        
+        Restaurant restaurant = restaurantRepository.findById(restaurantId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+        
         slotRepository.findByRestaurantIdAndSlotDateAndSlotTime(
-            restaurantId,
-            request.getSlotDate(),
-            request.getSlotTime()
+            restaurantId, request.getSlotDate(), request.getSlotTime()
         ).ifPresent(s -> {
             throw new BusinessException(ErrorCode.DUPLICATE_SLOT);
         });
@@ -91,8 +91,15 @@ public class SlotService {
             .minHeadcount(request.getMinHeadcount())
             .maxHeadcount(request.getMaxHeadcount())
             .build();
+        
+        // 1. 깨끗하게 DB에 한 번만 저장
+        Slot savedSlot = slotRepository.save(slot);
+        
+        // 2. ★ [구조 고도화] 레디스 실행기를 깨워서 깔끔하게 7일 TTL 초기화!
+        reservationRedisLuaExecutor.initSlotCount(savedSlot.getId(), savedSlot.getTotalCount());
 
-        return SlotResponse.SlotInfo.from(slotRepository.save(slot));
+        // 3. 중복 저장 걷어내고 리턴
+        return SlotResponse.SlotInfo.from(savedSlot);
     }
 
     /**
