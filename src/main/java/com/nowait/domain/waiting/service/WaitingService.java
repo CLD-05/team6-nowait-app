@@ -27,6 +27,7 @@ import com.nowait.domain.waiting.redis.WaitingRedisLuaExecutor;
 import com.nowait.domain.waiting.redis.WaitingTokenData;
 import com.nowait.domain.waiting.repository.WaitingCallLogRepository;
 import com.nowait.domain.waiting.repository.WaitingRepository;
+import com.nowait.domain.waiting.type.WaitingStatus;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
@@ -196,14 +197,36 @@ public class WaitingService {
   public WaitingResponse cancelByUser(String token, Long loginUserId) {
     WaitingTokenData data = findTokenDataOrThrow(token);
 
-    waitingRedis.cancel(token, loginUserId, data.sessionId(), data.restaurantId());
-    log.info("Waiting cancelled by user. token={}, userId={}", token, loginUserId);
+ // [케이스 1] Redis에 데이터가 살아있을 때 -> 기존 고속 처리
+    if (data != null) {
+        waitingRedis.cancel(token, loginUserId, data.sessionId(), data.restaurantId());
+        log.info("Waiting cancelled by user via Redis. token={}, userId={}", token, loginUserId);
 
-    notifyNearCallIfThreshold(data.sessionId());
+        notifyNearCallIfThreshold(data.sessionId());
 
-    WaitingTokenData updated = waitingRedis.findByToken(token);
-    return WaitingResponse.of(token, updated == null ? data : updated);
+        WaitingTokenData updated = waitingRedis.findByToken(token);
+        return WaitingResponse.of(token, updated == null ? data : updated);
+    }
+
+    // [케이스 2] ★ 핵심 추가 ★ Redis TTL(25시간) 만료 시 — DB 직접 취소 (Fallback)
+    // 1. DB에서 토큰 기반으로 웨이팅 장부를 찾습니다.
+    Waiting waiting = waitingRepository.findByWaitingToken(token)
+        .orElseThrow(() -> new BusinessException(ErrorCode.WAITING_NOT_FOUND));
+    
+    // 2. 엔티티 내부에 구현된 isOwnedBy 메서드로 본인 검증을 수행합니다.
+    if (!waiting.isOwnedBy(loginUserId)) {
+        throw new BusinessException(ErrorCode.ACCESS_DENIED);
+    }
+    
+    // 3. 엔티티 내부에 구현된 cancel 메서드를 호출하여 상태를 CANCELLED로 변경하고 시각을 기록합니다.
+    // (이미 종료된 웨이팅일 경우 엔티티 내부에서 INVALID_STATUS_TRANSITION 예외를 알아서 던져줍니다!)
+    waiting.cancel(LocalDateTime.now());
+    
+    log.info("Waiting cancelled by user via DB fallback. token={}, userId={}", token, loginUserId);
+    return WaitingResponse.from(waiting);
   }
+  
+  
 
   /* ================== 점주 ================== */
 
