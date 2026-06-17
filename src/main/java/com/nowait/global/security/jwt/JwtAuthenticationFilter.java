@@ -25,6 +25,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider tokenProvider;
     private final UserRepository userRepository;
+    private final TokenBlacklist tokenBlacklist;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -32,7 +33,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain chain) throws ServletException, IOException {
         String token = resolveToken(request);
 
-        if (token != null && tokenProvider.validate(token)) {
+        if (token != null
+                && tokenProvider.validate(token)
+                && tokenProvider.isAccessToken(token)
+                && !tokenBlacklist.contains(tokenProvider.getJti(token))) {
             Long userId = tokenProvider.getUserId(token);
             String email = tokenProvider.getEmail(token);
             UserRole role = tokenProvider.getRole(token);

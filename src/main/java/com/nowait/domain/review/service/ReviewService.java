@@ -1,5 +1,13 @@
 package com.nowait.domain.review.service;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.nowait.domain.reservation.entity.Reservation;
 import com.nowait.domain.reservation.redis.ReservationRedisLuaExecutor;
 import com.nowait.domain.reservation.redis.ReservationTokenData;
@@ -13,12 +21,8 @@ import com.nowait.domain.user.entity.User;
 import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.util.List;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -38,6 +42,7 @@ public class ReviewService {
      *   - DB에 레코드 자체가 없는 경우(극히 드문 Worker 지연) → 재시도 안내 메시지
      */
     @Transactional
+    @CacheEvict(value = "restaurant_reviews", key = "#reservationRedis.findByToken(#reservationToken).restaurantId()", cacheManager = "cacheManager")
     public ReviewResponse createReview(Long userId, String reservationToken, ReviewCreateRequest request) {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
@@ -87,8 +92,11 @@ public class ReviewService {
     }
 
     /**
-     * 식당 리뷰 목록 조회
+     * 🍕 식당 리뷰 목록 조회 (캐싱 적용)
+     * - value="restaurant_reviews": 식당별 리뷰들을 모아두는 임의의 바구니 이름
+     * - key="#restaurantId": 식당 번호별로 캐시 장부를 쪼개서 보관합니다. (예: restaurant_reviews::3)
      */
+    @Cacheable(value = "restaurant_reviews", key = "#restaurantId", cacheManager = "cacheManager")
     public List<ReviewResponse> getRestaurantReviews(Long restaurantId) {
         return reviewRepository.findByRestaurantIdOrderByCreatedAtDesc(restaurantId)
             .stream()
@@ -107,9 +115,11 @@ public class ReviewService {
     }
 
     /**
-     * 리뷰 수정 (본인만)
+     * ✏️ 리뷰 수정 (본인만)
+     * - 사장님이 지우거나 유저가 수정하면 바구니 안의 특정 식당 캐시를 정확히 타격해서 리셋합니다.
      */
     @Transactional
+    @CacheEvict(value = "restaurant_reviews", key = "#reviewRepository.findById(#reviewId).orElse(null)?.restaurant?.id", cacheManager = "cacheManager")
     public ReviewResponse updateReview(Long userId, Long reviewId, ReviewCreateRequest request) {
         Review review = reviewRepository.findById(reviewId)
             .orElseThrow(() -> new BusinessException(ErrorCode.REVIEW_NOT_FOUND));
@@ -123,9 +133,10 @@ public class ReviewService {
     }
 
     /**
-     * 리뷰 삭제 (본인만)
+     * 🗑️ 리뷰 삭제 (본인만)
      */
     @Transactional
+    @CacheEvict(value = "restaurant_reviews", key = "#reviewRepository.findById(#reviewId).orElse(null)?.restaurant?.id", cacheManager = "cacheManager")
     public void deleteReview(Long userId, Long reviewId) {
         Review review = reviewRepository.findById(reviewId)
             .orElseThrow(() -> new BusinessException(ErrorCode.REVIEW_NOT_FOUND));

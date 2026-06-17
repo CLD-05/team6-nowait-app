@@ -2,6 +2,8 @@ package com.nowait.domain.owner.service;
 
 import java.util.List;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,7 +53,15 @@ public class OwnerService {
 		return OwnerResponse.from(restaurantOwner);
 	}
 	
-	@Transactional
+	/**
+     * 🚫 점주 삭제 및 연쇄 식당 폐업
+     * 💥 점주 정보가 삭제되면서 운영 중인 식당도 폐업되므로, 기존 Redis 캐시 장부를 강제로 리셋합니다.
+     */
+    @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "restaurant", allEntries = true, cacheManager = "cacheManager"),
+        @CacheEvict(value = "restaurant_hours", allEntries = true, cacheManager = "cacheManager")
+    })
 	public void deleteOwner(Long ownerId) {
 		// 1. 🔍 현재 로그인한 사용자가 사장님(RestaurantOwner)이 맞는지 검증하고 찾아옵니다.
 	    RestaurantOwner restaurantOwner = restaurantOwnerRepository.findByUserId(ownerId)

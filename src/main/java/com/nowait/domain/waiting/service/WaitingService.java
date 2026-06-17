@@ -15,6 +15,8 @@ import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.entity.RestaurantHour;
 import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
+import com.nowait.domain.restaurant.service.RestaurantHourService;
+import com.nowait.domain.restaurant.service.RestaurantService;
 import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.waiting.dto.WaitingCallLogResponse;
@@ -62,6 +64,8 @@ public class WaitingService {
   private final WaitingRedisLuaExecutor waitingRedis;
   private final NotificationService notificationService;
   private final RestaurantHourRepository restaurantHourRepository;
+  private final RestaurantHourService restaurantHourService;
+  private final RestaurantService restaurantService;
 
   /* ================== 사용자 ================== */
 
@@ -88,8 +92,17 @@ public class WaitingService {
     DayOfWeek customDayOfWeek = DayOfWeek.valueOf(currentDayName);
 
     // B. DB에서 오늘 요일에 해당하는 식당의 영업 장부 조회
-    RestaurantHour todayHourInfo = restaurantHourRepository
-        .findByRestaurantIdAndDayOfWeek(restaurantId, customDayOfWeek)
+// ❌ 기존 방식: MySQL 직접 조회 (부하 유발)
+//    RestaurantHour todayHourInfo = restaurantHourRepository
+//        .findByRestaurantIdAndDayOfWeek(restaurantId, customDayOfWeek)
+//        .orElseThrow(() -> new BusinessException(ErrorCode.OPERATING_INFO_NOT_FOUND));
+    
+    // 🎯 개선 방식: 우리가 만들어둔 @Cacheable 메서드를 경유하도록 변경! (Redis에서 0초만에 반환)
+    // (주의: RestaurantHourService의 getRestaurantHours가 List를 반환하므로, 그 중 오늘 요일에 맞는 것만 스트림으로 필터링해 줍니다.)
+    com.nowait.domain.restaurant.dto.RestaurantHourRequest todayHourInfo = restaurantHourService.getRestaurantHours(restaurantId)
+        .stream()
+        .filter(h -> h.getDayOfWeek() == customDayOfWeek)
+        .findFirst()
         .orElseThrow(() -> new BusinessException(ErrorCode.OPERATING_INFO_NOT_FOUND));
 
     // C. 🚫 오늘이 정기 휴무일('Y')인지 검증
@@ -378,9 +391,13 @@ public class WaitingService {
   }
 
   private String getRestaurantName(Long restaurantId) {
-    return restaurantRepository.findById(restaurantId)
-        .map(Restaurant::getName)
-        .orElse("매장");
+	// ❌ 기존 방식: MySQL 직접 타격
+	//    return restaurantRepository.findById(restaurantId)
+	//        .map(Restaurant::getName)
+	//        .orElse("매장");
+	  
+	// 🎯 개선 방식: 우리가 고도화한 식당 캐시 서비스 경유! (MySQL 쿼리 ZERO)
+	    return restaurantService.getRestaurantDetail(restaurantId).getName();
   }
 
 
