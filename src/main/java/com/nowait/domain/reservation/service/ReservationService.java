@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+
+import com.nowait.global.common.TimeZones;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -28,10 +30,13 @@ import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.entity.RestaurantHour;
 import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
+import com.nowait.domain.restaurant.service.RestaurantService;
 import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.slot.entity.Slot;
 import com.nowait.domain.slot.repository.SlotRepository;
+import com.nowait.domain.slot.service.SlotService;
+import com.nowait.domain.user.entity.User;
 import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
@@ -61,9 +66,12 @@ public class ReservationService {
     private final RestaurantRepository restaurantRepository;
     private final RestaurantHourRepository restaurantHourRepository;
     private final SlotRepository slotRepository;
+    private final SlotService slotService;
     private final UserRepository userRepository;
     private final ReservationRedisLuaExecutor reservationRedis;
     private final StringRedisTemplate redisTemplate;
+    // [새로 추가] 최하단 buildFromRedis에서 '캐시 자판기'를 경유하기 위해 추가로 주입합니다!
+    private final RestaurantService restaurantService;
 
     /* ================== 사용자 ================== */
 
@@ -226,9 +234,17 @@ public class ReservationService {
         reservation.syncFromRedis(
             ReservationStatus.CANCELLED,
             reservation.getVisitedAt(),
-            LocalDateTime.now(),
+            LocalDateTime.now(TimeZones.KST),
             reservation.getNoShowAt()
         );
+        
+        // ★ [핵심 추가] DB의 슬롯 카운트도 반드시 복구(Increase)해줍니다!
+        // reservation 엔티티가 가진 slot의 ID를 이용해 수량을 1 늘려줍니다.
+        if (reservation.getSlot() != null) {
+            slotService.increase(reservation.getSlot().getId());
+            log.info("Slot count restored via DB fallback. slotId={}", reservation.getSlot().getId());
+        }
+        
         log.info("Reservation cancelled via DB fallback. token={}, userId={}", token, userId);
         return ReservationResponse.from(reservation);
     }
@@ -277,6 +293,7 @@ public class ReservationService {
      * 예약 승인 (점주) — PATCH /api/v1/owner/reservations/{token}/approve
      * PENDING → CONFIRMED
      */
+    @Transactional
     public ReservationResponse approveReservation(Long ownerUserId, String token) {
         ReservationTokenData data = findTokenDataOrThrow(token);
         verifyOwnership(data.restaurantId(), ownerUserId);
@@ -296,25 +313,55 @@ public class ReservationService {
      * 예약 거부 (점주) — PATCH /api/v1/owner/reservations/{token}/reject
      * PENDING → REJECTED
      */
+    @Transactional
     public ReservationResponse rejectReservation(Long ownerUserId, String token, RejectReservationRequest request) {
         ReservationTokenData data = findTokenDataOrThrow(token);
-        verifyOwnership(data.restaurantId(), ownerUserId);
+        // [케이스 1] Redis에 데이터가 생존해 있을 때 -> 기존 고속 처리 경로
+        if (data != null) {
+            verifyOwnership(data.restaurantId(), ownerUserId);
+            if (data.status() != ReservationStatus.PENDING) {
+                throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
+            }
+            reservationRedis.reject(token, data.userId(), data.slotId(), request.reason().name());
+            log.info("Reservation rejected via Redis. token={}, reason={}", token, request.reason());
 
-        if (data.status() != ReservationStatus.PENDING) {
+            ReservationTokenData updated = reservationRedis.findByToken(token);
+            return buildFromRedis(token, updated == null ? data : updated);
+        }
+        
+        // [케이스 2] ★ 새 지평 ★ Redis TTL 만료 시 — DB 직접 거부 (Fallback)
+        Reservation reservation = reservationRepository.findByReservationToken(token)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESERVATION_NOT_FOUND));
+        
+        verifyOwnership(reservation.getRestaurant().getId(), ownerUserId);
+        
+        if (reservation.getStatus() != ReservationStatus.PENDING) {
             throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION);
         }
+        
+        // DB의 예약 상태 직접 업데이트
+        reservation.syncFromRedis(
+            ReservationStatus.REJECTED,
+            reservation.getVisitedAt(),
+            LocalDateTime.now(), // 거부 일시 기록
+            reservation.getNoShowAt()
+        );
+        
+        // 거부되었으므로 DB 내 매장의 해당 타임 슬롯 카운트 원상 복구!
+        if (reservation.getSlot() != null) {
+            slotService.increase(reservation.getSlot().getId());
+            log.info("Slot count restored via DB reject fallback. slotId={}", reservation.getSlot().getId());
+        }
 
-        reservationRedis.reject(token, data.userId(), data.slotId(), request.reason().name());
-        log.info("Reservation rejected. token={}, reason={}", token, request.reason());
-
-        ReservationTokenData updated = reservationRedis.findByToken(token);
-        return buildFromRedis(token, updated == null ? data : updated);
+        log.info("Reservation rejected via DB fallback. token={}", token);
+        return ReservationResponse.from(reservation);
     }
 
     /*
      * 방문 완료 처리 (점주) — PATCH /api/v1/owner/reservations/{token}/visit
      * DB 상태 업데이트는 Worker 가 비동기 처리.
      */
+    @Transactional
     public ReservationResponse markVisited(Long ownerUserId, String token) {
         ReservationTokenData data = findTokenDataOrThrow(token);
         verifyOwnership(data.restaurantId(), ownerUserId);
@@ -330,6 +377,7 @@ public class ReservationService {
      * 노쇼 처리 (점주) — PATCH /api/v1/owner/reservations/{token}/noshow
      * DB 상태 업데이트는 Worker 가 비동기 처리.
      */
+    @Transactional
     public ReservationResponse markNoShow(Long ownerUserId, String token) {
         ReservationTokenData data = findTokenDataOrThrow(token);
         verifyOwnership(data.restaurantId(), ownerUserId);
@@ -404,19 +452,28 @@ public class ReservationService {
 
     /* 응답용 — restaurant/slot/user 메타데이터를 DB 에서 조회해서 합쳐줌 */
     private ReservationResponse buildFromRedis(String token, ReservationTokenData data) {
-        String restaurantName = restaurantRepository.findById(data.restaurantId())
-            .map(Restaurant::getName).orElse("매장");
+    	
+    	// 🎯 [개선] DB 직접 조회가 아니라, 우리가 캐싱 처리해둔 RestaurantService의 메서드를 호출합니다!
+        // 이렇게 하면 Redis 캐시(Look-Aside)를 먼저 거치기 때문에 MySQL을 찌르지 않고 0초 만에 식당 이름을 가져옵니다.
+        String restaurantName = restaurantService.getRestaurantDetail(data.restaurantId()).getName();
+        
+        // 👤 유저 정보는 목록 폭주 연타 대상이 아니므로 기존대로 DB에서 가볍게 읽어옵니다.
         String userName = userRepository.findById(data.userId())
-            .map(u -> u.getName()).orElse("고객");
-        Slot slot = slotRepository.findById(data.slotId()).orElse(null);
+            .map(User::getName).orElse("고객");
+        
+        // 🎯 [개선] 레포지토리 직접 조회를 지우고, 캐시 문지기가 있는 slotService를 거치도록 수정합니다!
+        // 이제 슬롯 날짜/시간 정보도 MySQL을 치지 않고 Redis 캐시 자판기에서 쏙 꺼내옵니다. (MySQL 쿼리 X)
+        Slot slot = slotService.getSlotById(data.slotId());
+        
         LocalDate slotDate = slot == null ? null : slot.getSlotDate();
         LocalTime slotTime = slot == null ? null : slot.getSlotTime();
+        
         return ReservationResponse.fromRedis(token, data, restaurantName, userName, slotDate, slotTime);
     }
 
     private static long toEpochMillis(LocalDate date, LocalTime time) {
         return LocalDateTime.of(date, time)
-            .atZone(ZoneId.systemDefault())
+            .atZone(TimeZones.KST)
             .toInstant()
             .toEpochMilli();
     }

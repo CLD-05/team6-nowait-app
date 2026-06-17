@@ -147,6 +147,6 @@ public class ReservationSyncHandler {
 
   private static LocalDateTime toLdtNullable(Long millis) {
     if (millis == null) return null;
-    return LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault());
+    return LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), com.nowait.global.common.TimeZones.KST);
   }
 }

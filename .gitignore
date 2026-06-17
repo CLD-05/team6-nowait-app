@@ -125,3 +125,13 @@ coverage/
 *.lcov
 
 #클로드
+
+# ==================
+# Frontend (백엔드 레포에 혼입 방지)
+# ==================
+node_modules/
+dist/
+*.webp
+*.png
+*.jpg
+*.svg

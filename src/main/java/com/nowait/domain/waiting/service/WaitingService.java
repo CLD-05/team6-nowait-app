@@ -3,6 +3,8 @@ package com.nowait.domain.waiting.service;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+
+import com.nowait.global.common.TimeZones;
 import java.util.List;
 import java.util.Objects;
 
@@ -15,6 +17,8 @@ import com.nowait.domain.restaurant.entity.Restaurant;
 import com.nowait.domain.restaurant.entity.RestaurantHour;
 import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
+import com.nowait.domain.restaurant.service.RestaurantHourService;
+import com.nowait.domain.restaurant.service.RestaurantService;
 import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.waiting.dto.WaitingCallLogResponse;
@@ -27,6 +31,7 @@ import com.nowait.domain.waiting.redis.WaitingRedisLuaExecutor;
 import com.nowait.domain.waiting.redis.WaitingTokenData;
 import com.nowait.domain.waiting.repository.WaitingCallLogRepository;
 import com.nowait.domain.waiting.repository.WaitingRepository;
+import com.nowait.domain.waiting.type.WaitingStatus;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
@@ -61,6 +66,8 @@ public class WaitingService {
   private final WaitingRedisLuaExecutor waitingRedis;
   private final NotificationService notificationService;
   private final RestaurantHourRepository restaurantHourRepository;
+  private final RestaurantHourService restaurantHourService;
+  private final RestaurantService restaurantService;
 
   /* ================== 사용자 ================== */
 
@@ -83,12 +90,21 @@ public class WaitingService {
     }
     
     // A. 현재 '지금 이 순간'의 요일을 구하고, 3글자 Enum으로 변환
-    String currentDayName = LocalDateTime.now().getDayOfWeek().name().substring(0, 3);
+    String currentDayName = LocalDateTime.now(TimeZones.KST).getDayOfWeek().name().substring(0, 3);
     DayOfWeek customDayOfWeek = DayOfWeek.valueOf(currentDayName);
 
     // B. DB에서 오늘 요일에 해당하는 식당의 영업 장부 조회
-    RestaurantHour todayHourInfo = restaurantHourRepository
-        .findByRestaurantIdAndDayOfWeek(restaurantId, customDayOfWeek)
+// ❌ 기존 방식: MySQL 직접 조회 (부하 유발)
+//    RestaurantHour todayHourInfo = restaurantHourRepository
+//        .findByRestaurantIdAndDayOfWeek(restaurantId, customDayOfWeek)
+//        .orElseThrow(() -> new BusinessException(ErrorCode.OPERATING_INFO_NOT_FOUND));
+    
+    // 🎯 개선 방식: 우리가 만들어둔 @Cacheable 메서드를 경유하도록 변경! (Redis에서 0초만에 반환)
+    // (주의: RestaurantHourService의 getRestaurantHours가 List를 반환하므로, 그 중 오늘 요일에 맞는 것만 스트림으로 필터링해 줍니다.)
+    com.nowait.domain.restaurant.dto.RestaurantHourRequest todayHourInfo = restaurantHourService.getRestaurantHours(restaurantId)
+        .stream()
+        .filter(h -> h.getDayOfWeek() == customDayOfWeek)
+        .findFirst()
         .orElseThrow(() -> new BusinessException(ErrorCode.OPERATING_INFO_NOT_FOUND));
 
     // C. 🚫 오늘이 정기 휴무일('Y')인지 검증
@@ -97,7 +113,7 @@ public class WaitingService {
     }
 
     // D. 🚫 지금 줄 서는 시각이 영업시간 범위 내에 있는지 검증
-    LocalTime currentTime = LocalTime.now();
+    LocalTime currentTime = LocalTime.now(TimeZones.KST);
     if (currentTime.isBefore(todayHourInfo.getOpenTime()) || currentTime.isAfter(todayHourInfo.getCloseTime())) {
     	throw new BusinessException(ErrorCode.NOT_OPERATING_TIME);
     }
@@ -196,14 +212,36 @@ public class WaitingService {
   public WaitingResponse cancelByUser(String token, Long loginUserId) {
     WaitingTokenData data = findTokenDataOrThrow(token);
 
-    waitingRedis.cancel(token, loginUserId, data.sessionId(), data.restaurantId());
-    log.info("Waiting cancelled by user. token={}, userId={}", token, loginUserId);
+ // [케이스 1] Redis에 데이터가 살아있을 때 -> 기존 고속 처리
+    if (data != null) {
+        waitingRedis.cancel(token, loginUserId, data.sessionId(), data.restaurantId());
+        log.info("Waiting cancelled by user via Redis. token={}, userId={}", token, loginUserId);
 
-    notifyNearCallIfThreshold(data.sessionId());
+        notifyNearCallIfThreshold(data.sessionId());
 
-    WaitingTokenData updated = waitingRedis.findByToken(token);
-    return WaitingResponse.of(token, updated == null ? data : updated);
+        WaitingTokenData updated = waitingRedis.findByToken(token);
+        return WaitingResponse.of(token, updated == null ? data : updated);
+    }
+
+    // [케이스 2] ★ 핵심 추가 ★ Redis TTL(25시간) 만료 시 — DB 직접 취소 (Fallback)
+    // 1. DB에서 토큰 기반으로 웨이팅 장부를 찾습니다.
+    Waiting waiting = waitingRepository.findByWaitingToken(token)
+        .orElseThrow(() -> new BusinessException(ErrorCode.WAITING_NOT_FOUND));
+    
+    // 2. 엔티티 내부에 구현된 isOwnedBy 메서드로 본인 검증을 수행합니다.
+    if (!waiting.isOwnedBy(loginUserId)) {
+        throw new BusinessException(ErrorCode.ACCESS_DENIED);
+    }
+    
+    // 3. 엔티티 내부에 구현된 cancel 메서드를 호출하여 상태를 CANCELLED로 변경하고 시각을 기록합니다.
+    // (이미 종료된 웨이팅일 경우 엔티티 내부에서 INVALID_STATUS_TRANSITION 예외를 알아서 던져줍니다!)
+    waiting.cancel(LocalDateTime.now());
+    
+    log.info("Waiting cancelled by user via DB fallback. token={}, userId={}", token, loginUserId);
+    return WaitingResponse.from(waiting);
   }
+  
+  
 
   /* ================== 점주 ================== */
 
@@ -245,7 +283,7 @@ public class WaitingService {
 
     /* 호출 로그 INSERT — DB 행 존재 시에만 (Worker 가 아직 sync 안 했을 수 있음) */
     waitingRepository.findByWaitingToken(token).ifPresent(waiting -> {
-      LocalDateTime now = LocalDateTime.now();
+      LocalDateTime now = LocalDateTime.now(TimeZones.KST);
       int sequence = waitingCallLogRepository.countByWaiting(waiting) + 1;
       waitingCallLogRepository.save(
           WaitingCallLog.builder()
@@ -355,9 +393,13 @@ public class WaitingService {
   }
 
   private String getRestaurantName(Long restaurantId) {
-    return restaurantRepository.findById(restaurantId)
-        .map(Restaurant::getName)
-        .orElse("매장");
+	// ❌ 기존 방식: MySQL 직접 타격
+	//    return restaurantRepository.findById(restaurantId)
+	//        .map(Restaurant::getName)
+	//        .orElse("매장");
+	  
+	// 🎯 개선 방식: 우리가 고도화한 식당 캐시 서비스 경유! (MySQL 쿼리 ZERO)
+	    return restaurantService.getRestaurantDetail(restaurantId).getName();
   }
 
 

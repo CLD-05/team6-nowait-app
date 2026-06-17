@@ -2,6 +2,8 @@ package com.nowait.domain.owner.entity;
 
 import java.time.LocalDateTime;
 
+import com.nowait.global.common.TimeZones;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -44,7 +46,7 @@ public class RestaurantOwner {
 	public RestaurantOwner(Long userId, Long restaurantId) {
 		this.userId = userId;
 		this.restaurantId = restaurantId;
-		this.createdAt = LocalDateTime.now();
+		this.createdAt = LocalDateTime.now(TimeZones.KST);
 		
 	}
 }
