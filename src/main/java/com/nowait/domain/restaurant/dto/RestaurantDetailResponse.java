@@ -28,7 +28,7 @@ public class RestaurantDetailResponse {
 	private String reservationAvailable;
 	private String waitingAvailable;
 	
-	public static RestaurantDetailResponse from(Restaurant restaurant) {
+	public static RestaurantDetailResponse from(Restaurant restaurant, String imageUrl) {
 		return new RestaurantDetailResponse(
 				restaurant.getId(),
 				restaurant.getName(),
@@ -36,7 +36,7 @@ public class RestaurantDetailResponse {
 				restaurant.getAddress(),
 				restaurant.getPhoneNumber(),
 				restaurant.getDescription(),
-				restaurant.getImageUrl(),
+				imageUrl,
 				restaurant.getMainMenuName(),
 				restaurant.getParkingAvailable(),
 				restaurant.getWifiAvailable(),
@@ -44,7 +44,6 @@ public class RestaurantDetailResponse {
 				restaurant.getStatus(),
 				restaurant.getReservationAvailable(),
 				restaurant.getWaitingAvailable()
-				);
-		
+		);
 	}
 }

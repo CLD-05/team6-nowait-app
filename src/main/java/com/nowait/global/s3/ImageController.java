@@ -50,9 +50,17 @@ public class ImageController {
         @Valid @RequestBody ImageCompleteRequest request,
         @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        String imageUrl = "https://" + bucket + ".s3." + region + ".amazonaws.com/" + request.imageKey();
-        restaurantService.updateRestaurantImage(request.restaurantId(), userDetails.getUserId(), imageUrl);
-        return ResponseEntity.ok(new ImageCompleteResponse(imageUrl));
+        String imageKey = request.imageKey();
+
+        restaurantService.updateRestaurantImage(
+            request.restaurantId(),
+            userDetails.getUserId(),
+            imageKey
+        );
+
+        String readableImageUrl = s3Service.generatePresignedGetUrl(imageKey);
+
+        return ResponseEntity.ok(new ImageCompleteResponse(readableImageUrl));
     }
 
     public record ImageCompleteResponse(String imageUrl) {}

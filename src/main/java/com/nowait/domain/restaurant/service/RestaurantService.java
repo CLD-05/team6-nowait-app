@@ -24,6 +24,7 @@ import com.nowait.domain.restaurant.type.RestaurantCategory;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
+import com.nowait.global.s3.S3Service;
 
 import lombok.RequiredArgsConstructor;
 
@@ -34,6 +35,7 @@ public class RestaurantService {
 	
 	private final RestaurantRepository restaurantRepository;
 	private final RestaurantHourRepository restaurantHourRepository;
+	private final S3Service s3Service;
 	
 	@Transactional
     public Long registerRestaurant(RestaurantRegisterRequest request, Long ownerId) {
@@ -81,49 +83,90 @@ public class RestaurantService {
     }
 	
 	public List<RestaurantListResponse> getAllRestaurants() {
-		return restaurantRepository.findAll().stream()
-				.map(RestaurantListResponse::from)
-				.collect(Collectors.toList());
+    return restaurantRepository.findAll().stream()
+            .map(restaurant -> RestaurantListResponse.from(
+                restaurant,
+                s3Service.resolveReadableImageUrl(restaurant.getImageUrl())
+            ))
+            .collect(Collectors.toList());
 	}
 	
 	public List<RestaurantListResponse> searchRestaurantsByName(String keyword) {
-	    return restaurantRepository.findByNameContaining(keyword).stream()
-	            .map(RestaurantListResponse::from)
-	            .collect(Collectors.toList());
+    return restaurantRepository.findByNameContaining(keyword).stream()
+            .map(restaurant -> RestaurantListResponse.from(
+                restaurant,
+                s3Service.resolveReadableImageUrl(restaurant.getImageUrl())
+            ))
+            .collect(Collectors.toList());
 	}
-	
+
 	public List<RestaurantListResponse> getRestaurantsByCategory(RestaurantCategory category) {
 		return restaurantRepository.findByCategory(category).stream()
-				.map(RestaurantListResponse::from)
+				.map(restaurant -> RestaurantListResponse.from(
+					restaurant,
+					s3Service.resolveReadableImageUrl(restaurant.getImageUrl())
+				))
 				.collect(Collectors.toList());
 	}
 	
 	public RestaurantDetailResponse getRestaurantDetail(Long restaurantId) {
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
-		return RestaurantDetailResponse.from(restaurant);
+
+		return RestaurantDetailResponse.from(
+			restaurant,
+			s3Service.resolveReadableImageUrl(restaurant.getImageUrl())
+		);
 	}
 
 	public RestaurantDetailResponse getMyRestaurant(Long ownerId) {
 		Restaurant restaurant = restaurantRepository.findFirstByOwnerIdAndIsDeleted(ownerId, "N")
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
-		return RestaurantDetailResponse.from(restaurant);
+
+		return RestaurantDetailResponse.from(
+			restaurant,
+			s3Service.resolveReadableImageUrl(restaurant.getImageUrl())
+		);
 	}
 	
 	@Transactional
 	public void updateRestaurant(Long restaurantId, RestaurantUpdateRequest request, Long ownerId) {
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
-		
+
 		if (!restaurant.getOwnerId().equals(ownerId)) {
 			throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
 		}
 
+		// presigned URL이 들어오더라도 imageKey만 저장한다. (DB image_url 컬럼 length=500 초과 방지)
+		String normalizedImageUrl = normalizeImageUrl(request.getImageUrl());
+
 		restaurant.updateDetails(
 				request.getName(), request.getCategory(), request.getAddress(), request.getPhoneNumber(),
-				request.getDescription(), request.getImageUrl(), request.getMainMenuName(),
+				request.getDescription(), normalizedImageUrl, request.getMainMenuName(),
 				request.getParkingAvailable(), request.getWifiAvailable(), request.getMultilingualMenuAvailable(),
 				request.getStatus(), request.getReservationAvailable(), request.getWaitingAvailable());
+	}
+
+	/**
+	 * 프론트가 어떤 형태(imageKey / static 경로 / S3 직접 URL / presigned GET URL)를 보내도
+	 * DB에는 항상 짧은 imageKey 형태로만 저장하도록 정규화한다.
+	 * 기존 정책: imageKey = "restaurants/{id}/{uuid}.{ext}" 또는 "/images/..." (seed).
+	 */
+	private String normalizeImageUrl(String imageUrl) {
+		if (imageUrl == null || imageUrl.isBlank()) {
+			return imageUrl;
+		}
+		if (imageUrl.startsWith("/images/") || imageUrl.startsWith("restaurants/")) {
+			return imageUrl;
+		}
+		int amazonIdx = imageUrl.indexOf(".amazonaws.com/");
+		if (amazonIdx > 0) {
+			String afterDomain = imageUrl.substring(amazonIdx + ".amazonaws.com/".length());
+			int q = afterDomain.indexOf('?');
+			return q > 0 ? afterDomain.substring(0, q) : afterDomain;
+		}
+		return imageUrl;
 	}
 	
 	@Transactional
