@@ -1,8 +1,9 @@
 package com.nowait.global.config;
 
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
-import com.nowait.domain.slot.repository.SlotRepository;
 import com.nowait.domain.slot.entity.Slot;
+import com.nowait.domain.slot.repository.SlotRepository;
+import com.nowait.global.common.TimeZones;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -35,7 +36,7 @@ public class SlotSeedRunner implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(TimeZones.KST);
         LocalDate endDate = today.plusDays(30);
 
         // 이미 존재하는 슬롯을 "restaurantId_date_time" 문자열 Set으로 캐시

@@ -4,6 +4,7 @@ import com.nowait.domain.restaurant.repository.RestaurantRepository;
 import com.nowait.domain.waiting.entity.WaitingSession;
 import com.nowait.domain.waiting.redis.WaitingRedisLuaExecutor;
 import com.nowait.domain.waiting.repository.WaitingSessionRepository;
+import com.nowait.global.common.TimeZones;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -32,8 +33,8 @@ public class WaitingSessionSeedRunner implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        LocalDate today = LocalDate.now();
-        LocalDateTime now = LocalDateTime.now();
+        LocalDate today = LocalDate.now(TimeZones.KST);
+        LocalDateTime now = LocalDateTime.now(TimeZones.KST);
 
         var restaurants = restaurantRepository.findAll();
 

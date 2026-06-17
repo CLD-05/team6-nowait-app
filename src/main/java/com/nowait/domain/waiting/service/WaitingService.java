@@ -3,6 +3,8 @@ package com.nowait.domain.waiting.service;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+
+import com.nowait.global.common.TimeZones;
 import java.util.List;
 import java.util.Objects;
 
@@ -83,7 +85,7 @@ public class WaitingService {
     }
     
     // A. 현재 '지금 이 순간'의 요일을 구하고, 3글자 Enum으로 변환
-    String currentDayName = LocalDateTime.now().getDayOfWeek().name().substring(0, 3);
+    String currentDayName = LocalDateTime.now(TimeZones.KST).getDayOfWeek().name().substring(0, 3);
     DayOfWeek customDayOfWeek = DayOfWeek.valueOf(currentDayName);
 
     // B. DB에서 오늘 요일에 해당하는 식당의 영업 장부 조회
@@ -97,7 +99,7 @@ public class WaitingService {
     }
 
     // D. 🚫 지금 줄 서는 시각이 영업시간 범위 내에 있는지 검증
-    LocalTime currentTime = LocalTime.now();
+    LocalTime currentTime = LocalTime.now(TimeZones.KST);
     if (currentTime.isBefore(todayHourInfo.getOpenTime()) || currentTime.isAfter(todayHourInfo.getCloseTime())) {
     	throw new BusinessException(ErrorCode.NOT_OPERATING_TIME);
     }
@@ -245,7 +247,7 @@ public class WaitingService {
 
     /* 호출 로그 INSERT — DB 행 존재 시에만 (Worker 가 아직 sync 안 했을 수 있음) */
     waitingRepository.findByWaitingToken(token).ifPresent(waiting -> {
-      LocalDateTime now = LocalDateTime.now();
+      LocalDateTime now = LocalDateTime.now(TimeZones.KST);
       int sequence = waitingCallLogRepository.countByWaiting(waiting) + 1;
       waitingCallLogRepository.save(
           WaitingCallLog.builder()

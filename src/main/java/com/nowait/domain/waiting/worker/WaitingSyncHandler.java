@@ -78,7 +78,7 @@ public class WaitingSyncHandler {
   }
 
   private static LocalDateTime toLdt(long millis) {
-    return LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault());
+    return LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), com.nowait.global.common.TimeZones.KST);
   }
 
   private static LocalDateTime toLdtNullable(Long millis) {

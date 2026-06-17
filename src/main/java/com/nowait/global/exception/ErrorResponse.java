@@ -1,6 +1,7 @@
 package com.nowait.global.exception;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.nowait.global.common.TimeZones;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -16,7 +17,7 @@ public record ErrorResponse(
 
   public static ErrorResponse of(ErrorCode errorCode, String path) {
     return new ErrorResponse(
-        LocalDateTime.now(),
+        LocalDateTime.now(TimeZones.KST),
         errorCode.getStatus().value(),
         errorCode.getCode(),
         errorCode.getMessage(),
@@ -26,7 +27,7 @@ public record ErrorResponse(
 
   public static ErrorResponse of(ErrorCode errorCode, String path, List<FieldError> errors) {
     return new ErrorResponse(
-        LocalDateTime.now(),
+        LocalDateTime.now(TimeZones.KST),
         errorCode.getStatus().value(),
         errorCode.getCode(),
         errorCode.getMessage(),
