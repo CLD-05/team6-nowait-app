@@ -154,6 +154,9 @@ export default function StoreManagementPage() {
   const [imageUploading, setImageUploading] = useState(false);
   const [imageMsg, setImageMsg] = useState('');
   const imageInputRef = useRef<HTMLInputElement>(null);
+  // 매장을 아직 등록하기 전(restaurantId 없음)에 골라둔 이미지 — 등록 직후 자동 업로드된다.
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+  const [pendingPreviewUrl, setPendingPreviewUrl] = useState('');
 
   // 웨이팅 세션
   const [waitingSession, setWaitingSession] = useState<WaitingSession | null>(null);
@@ -283,8 +286,7 @@ export default function StoreManagementPage() {
     }
   }
 
-  async function handleCreateSlot(e: FormEvent) {
-    e.preventDefault();
+  async function handleCreateSlot() {
     if (!restaurantId) return;
     setSlotMsg('');
     try {
@@ -387,18 +389,14 @@ export default function StoreManagementPage() {
     setMessage('');
   }
 
-  async function handleImageUpload(file: File) {
-    if (!restaurantId) {
-      setImageMsg('먼저 매장을 등록해주세요.');
-      return;
-    }
+  async function uploadImage(targetRestaurantId: number, file: File) {
     setImageUploading(true);
     setImageMsg('');
     try {
       // 1) Presigned URL 발급
       const token = localStorage.getItem('nowait_token');
       const presignRes = await fetch(
-        `${API_BASE}/images/presigned-url?restaurantId=${restaurantId}&filename=${encodeURIComponent(file.name)}`,
+        `${API_BASE}/images/presigned-url?restaurantId=${targetRestaurantId}&filename=${encodeURIComponent(file.name)}`,
         { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
       );
       if (!presignRes.ok) throw new Error('Presigned URL 발급에 실패했습니다.');
@@ -416,7 +414,7 @@ export default function StoreManagementPage() {
       const completeRes = await fetch(`${API_BASE}/images/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ restaurantId, imageKey }),
+        body: JSON.stringify({ restaurantId: targetRestaurantId, imageKey }),
       });
       if (!completeRes.ok) throw new Error('이미지 저장에 실패했습니다.');
       const { imageUrl } = await completeRes.json() as { imageUrl: string };
@@ -429,6 +427,21 @@ export default function StoreManagementPage() {
     } finally {
       setImageUploading(false);
     }
+  }
+
+  /*
+   * 매장 등록 전(restaurantId 없음)에는 업로드 API 자체가 restaurantId를 필수로 받기 때문에
+   * 바로 올릴 수 없다. 대신 파일을 잠시 들고 있다가(로컬 미리보기만 표시) "매장 등록" 제출
+   * 직후 새로 발급된 restaurantId로 자동 업로드한다 (handleSubmit 참고).
+   */
+  function handleImagePick(file: File) {
+    if (restaurantId) {
+      void uploadImage(restaurantId, file);
+      return;
+    }
+    setPendingImageFile(file);
+    setPendingPreviewUrl(URL.createObjectURL(file));
+    setImageMsg('매장 등록을 완료하면 이미지가 함께 업로드됩니다.');
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -457,6 +470,13 @@ export default function StoreManagementPage() {
         });
         setRestaurantId(id);
         setMessage('매장이 등록되었습니다.');
+
+        if (pendingImageFile) {
+          const file = pendingImageFile;
+          setPendingImageFile(null);
+          setPendingPreviewUrl('');
+          await uploadImage(id, file);
+        }
       }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : '매장 정보를 저장하지 못했습니다.');
@@ -584,9 +604,9 @@ export default function StoreManagementPage() {
                 <div className="store-field store-field-wide">
                   <span>대표 이미지</span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {form.imageUrl && (
+                    {(pendingPreviewUrl || form.imageUrl) && (
                       <img
-                        src={resolveImageUrl(form.imageUrl)}
+                        src={pendingPreviewUrl || resolveImageUrl(form.imageUrl)}
                         alt="대표 이미지 미리보기"
                         style={{ width: '120px', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e5e7eb' }}
                         onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -599,7 +619,7 @@ export default function StoreManagementPage() {
                       style={{ display: 'none' }}
                       onChange={e => {
                         const file = e.target.files?.[0];
-                        if (file) void handleImageUpload(file);
+                        if (file) handleImagePick(file);
                         e.target.value = '';
                       }}
                     />
@@ -776,8 +796,14 @@ export default function StoreManagementPage() {
                   <p style={{ color: 'var(--muted)', fontWeight: 700 }}>매장을 먼저 등록해주세요.</p>
                 ) : (
                   <>
-                    {/* 슬롯 추가 폼 */}
-                    <form onSubmit={handleCreateSlot} style={{ marginBottom: 28, padding: '20px', background: 'var(--cream)', borderRadius: 14, border: '2px solid var(--ink)' }}>
+                    {/*
+                      슬롯 추가 — <div>로 둔다 (절대 <form>으로 만들지 말 것).
+                      이 블록 전체가 페이지 최상단의 <form onSubmit={handleSubmit}> 안에
+                      들어있어서, 여기에 또 <form>을 쓰면 HTML 중첩 form이 되어 브라우저가
+                      안쪽 form을 무시한다. 그 결과 "슬롯 추가" 버튼이 바깥 매장정보 저장
+                      폼으로 잘못 제출되며 슬롯은 생성되지 않고 탭만 기본정보로 리셋된다.
+                    */}
+                    <div style={{ marginBottom: 28, padding: '20px', background: 'var(--cream)', borderRadius: 14, border: '2px solid var(--ink)' }}>
                       <div style={{ fontWeight: 900, fontSize: '0.92rem', marginBottom: 14 }}>➕ 새 슬롯 추가</div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, marginBottom: 14 }}>
                         <label className="store-field">
@@ -791,7 +817,7 @@ export default function StoreManagementPage() {
                             onChange={e => setSlotForm(f => ({ ...f, slotTime: e.target.value }))} />
                         </label>
                         <label className="store-field">
-                          <span>총 좌석</span>
+                          <span>테이블 수 (받을 예약 건수)</span>
                           <input type="number" min={1} value={slotForm.totalCount}
                             onChange={e => setSlotForm(f => ({ ...f, totalCount: Number(e.target.value) }))} />
                         </label>
@@ -806,8 +832,8 @@ export default function StoreManagementPage() {
                             onChange={e => setSlotForm(f => ({ ...f, maxHeadcount: Number(e.target.value) }))} />
                         </label>
                       </div>
-                      <button type="submit" className="btn btn-tomato btn-sm">슬롯 추가</button>
-                    </form>
+                      <button type="button" className="btn btn-tomato btn-sm" onClick={() => void handleCreateSlot()}>슬롯 추가</button>
+                    </div>
 
                     {/* 날짜별 슬롯 조회 */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
@@ -829,7 +855,7 @@ export default function StoreManagementPage() {
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                                 <strong style={{ minWidth: 56 }}>{slot.slotTime.slice(0, 5)}</strong>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.84rem', fontWeight: 700 }}>
-                                  총 좌석
+                                  테이블 수
                                   <input type="number" min={1} value={editingSlot.totalCount} style={{ width: 64, padding: '4px 8px', border: '2px solid var(--ink)', borderRadius: 8 }}
                                     onChange={e => setEditingSlot(s => s && ({ ...s, totalCount: Number(e.target.value) }))} />
                                 </label>
@@ -851,7 +877,7 @@ export default function StoreManagementPage() {
                                 <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
                                   <strong style={{ fontSize: '1rem' }}>{slot.slotTime.slice(0, 5)}</strong>
                                   <span style={{ fontSize: '0.84rem', color: 'var(--muted)', fontWeight: 700 }}>
-                                    잔여 {slot.remainCount}/{slot.totalCount}석
+                                    잔여 {slot.remainCount}/{slot.totalCount}테이블
                                   </span>
                                   <span style={{
                                     fontSize: '0.75rem', fontWeight: 800, padding: '2px 10px',

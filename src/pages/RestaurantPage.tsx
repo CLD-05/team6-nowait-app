@@ -52,6 +52,8 @@ type Slot = {
   totalCount: number;
   remainCount: number;
   available?: boolean;
+  minHeadcount?: number;
+  maxHeadcount?: number;
   _isPast?: boolean;
 };
 
@@ -137,6 +139,17 @@ export default function RestaurantPage() {
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [headcount, setHeadcount] = useState(2);
   const [reserveLoading, setReserveLoading] = useState(false);
+
+  const headcountMin = selectedSlot?.minHeadcount ?? 1;
+  const headcountMax = selectedSlot?.maxHeadcount ?? 8;
+
+  /* 슬롯 선택 시, 그 슬롯의 인원 범위 밖이면 인원을 범위 안으로 즉시 맞춰준다. */
+  function selectSlot(slot: Slot) {
+    setSelectedSlot(slot);
+    const min = slot.minHeadcount ?? 1;
+    const max = slot.maxHeadcount ?? 8;
+    setHeadcount(h => Math.min(max, Math.max(min, h)));
+  }
 
   // 웨이팅
   const [waitingSession, setWaitingSession] = useState<WaitingSession | null>(null);
@@ -434,6 +447,22 @@ export default function RestaurantPage() {
     : restaurant?.openTime && restaurant?.closeTime
       ? `${restaurant.openTime} ~ ${restaurant.closeTime}`
       : '매장 문의';
+
+  /*
+   * 웨이팅은 "지금 줄을 서는" 개념이라 슬롯과 달리 현재 시각이 오늘 영업시간 안인지로
+   * 가능 여부가 결정된다 (백엔드 WaitingService.register도 동일하게 현재 시각 기준으로
+   * 검증함). todayHour가 없으면(영업시간 미설정) 막지 않고 서버 응답에 맡긴다.
+   */
+  const isOutsideOperatingHoursNow = (() => {
+    if (!todayHour) return false;
+    if (todayHour.isRegularHoliday === 'Y') return true;
+    const toMinutes = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+    return nowMinutes < toMinutes(todayHour.openTime) || nowMinutes > toMinutes(todayHour.closeTime);
+  })();
   const regularHolidayText = restaurantHours
     .filter(hour => hour.isRegularHoliday === 'Y')
     .map(hour => DAY_LABEL[hour.dayOfWeek])
@@ -610,7 +639,7 @@ export default function RestaurantPage() {
                       <button
                         key={slot.slotId}
                         disabled={disabled}
-                        onClick={() => setSelectedSlot(slot)}
+                        onClick={() => selectSlot(slot)}
                         style={{
                           padding: '12px 8px', borderRadius: 10, textAlign: 'center',
                           border: `2.5px solid ${selected ? 'var(--tomato)' : 'var(--ink)'}`,
@@ -634,6 +663,11 @@ export default function RestaurantPage() {
                         <div style={{ fontSize: '0.72rem', marginTop: 2 }}>
                           {slot._isPast ? '지난시간' : slot.remainCount === 0 ? '마감' : `잔여 ${slot.remainCount}`}
                         </div>
+                        {!slot._isPast && slot.remainCount !== 0 && slot.minHeadcount != null && slot.maxHeadcount != null && (
+                          <div style={{ fontSize: '0.66rem', marginTop: 1, opacity: 0.8 }}>
+                            {slot.minHeadcount}~{slot.maxHeadcount}명
+                          </div>
+                        )}
                       </button>
                     );
                   })}
@@ -645,20 +679,35 @@ export default function RestaurantPage() {
             <div style={{ marginBottom: 24 }}>
               <div style={{ fontSize: '0.92rem', fontWeight: 900, marginBottom: 10 }}>👥 인원 선택</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <button onClick={() => setHeadcount(h => Math.max(1, h - 1))} style={{
-                  width: 40, height: 40, borderRadius: '50%', border: '2.5px solid var(--ink)',
-                  background: '#fff', fontSize: '1.2rem', cursor: 'pointer', fontWeight: 900,
-                  boxShadow: '2px 2px 0 var(--ink)'
-                }}>−</button>
+                <button
+                  onClick={() => setHeadcount(h => Math.max(headcountMin, h - 1))}
+                  disabled={headcount <= headcountMin}
+                  style={{
+                    width: 40, height: 40, borderRadius: '50%', border: '2.5px solid var(--ink)',
+                    background: headcount <= headcountMin ? '#f5f5f5' : '#fff',
+                    color: headcount <= headcountMin ? '#bbb' : 'var(--ink)',
+                    fontSize: '1.2rem', cursor: headcount <= headcountMin ? 'not-allowed' : 'pointer', fontWeight: 900,
+                    boxShadow: headcount <= headcountMin ? 'none' : '2px 2px 0 var(--ink)'
+                  }}>−</button>
                 <span style={{ fontSize: '1.2rem', fontWeight: 900, minWidth: 40, textAlign: 'center' }}>
                   {headcount}명
                 </span>
-                <button onClick={() => setHeadcount(h => Math.min(8, h + 1))} style={{
-                  width: 40, height: 40, borderRadius: '50%', border: '2.5px solid var(--ink)',
-                  background: '#fff', fontSize: '1.2rem', cursor: 'pointer', fontWeight: 900,
-                  boxShadow: '2px 2px 0 var(--ink)'
-                }}>+</button>
+                <button
+                  onClick={() => setHeadcount(h => Math.min(headcountMax, h + 1))}
+                  disabled={headcount >= headcountMax}
+                  style={{
+                    width: 40, height: 40, borderRadius: '50%', border: '2.5px solid var(--ink)',
+                    background: headcount >= headcountMax ? '#f5f5f5' : '#fff',
+                    color: headcount >= headcountMax ? '#bbb' : 'var(--ink)',
+                    fontSize: '1.2rem', cursor: headcount >= headcountMax ? 'not-allowed' : 'pointer', fontWeight: 900,
+                    boxShadow: headcount >= headcountMax ? 'none' : '2px 2px 0 var(--ink)'
+                  }}>+</button>
               </div>
+              {selectedSlot && (
+                <div style={{ fontSize: '0.78rem', color: 'var(--muted)', fontWeight: 700, marginTop: 8 }}>
+                  이 시간대는 {headcountMin}~{headcountMax}명까지 예약 가능해요.
+                </div>
+              )}
             </div>
 
             <button onClick={handleReserve} disabled={reserveLoading || !selectedSlot} style={{
@@ -724,7 +773,18 @@ export default function RestaurantPage() {
                   )}
                 </div>
 
-                {waitingSession.status === 'OPEN' && (
+                {waitingSession.status === 'OPEN' && isOutsideOperatingHoursNow && (
+                  <div style={{
+                    textAlign: 'center', padding: '16px', background: 'var(--tomato-light)',
+                    border: '2px solid var(--tomato)', borderRadius: 14, fontWeight: 800,
+                    color: 'var(--tomato)', fontSize: '0.88rem'
+                  }}>
+                    지금은 영업시간이 아니라 웨이팅을 등록할 수 없어요.
+                    <br />오늘 영업시간: {operatingHoursText}
+                  </div>
+                )}
+
+                {waitingSession.status === 'OPEN' && !isOutsideOperatingHoursNow && (
                   <>
                     <div style={{ marginBottom: 24 }}>
                       <div style={{ fontSize: '0.92rem', fontWeight: 900, marginBottom: 10 }}>👥 인원 선택</div>

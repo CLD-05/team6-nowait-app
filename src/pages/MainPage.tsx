@@ -62,6 +62,7 @@ export default function MainPage() {
   const [page, setPage] = useState(0);
   const [restaurants2, setRestaurants2] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(false);
+  const [totalRestaurantCount, setTotalRestaurantCount] = useState(0);
 
   const fetchRestaurants = useCallback(async () => {
     setLoading(true);
@@ -97,6 +98,28 @@ export default function MainPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   void fetchRestaurants();
 }, [fetchRestaurants]);
+
+  /*
+   * "현재 등록 맛집" 통계는 카테고리/검색 필터와 무관하게 항상 전체 등록 식당 수를
+   * 보여줘야 한다. category/keyword 필터가 걸린 fetchRestaurants 결과(availableRestaurants)를
+   * 쓰면 카테고리를 바꿀 때마다 숫자가 같이 바뀌어버리므로, 필터 없는 전체 목록을 따로
+   * 한 번만 불러온다.
+   */
+  useEffect(() => {
+    async function fetchTotalCount() {
+      try {
+        const res = await fetch(`${API_BASE}/restaurants`, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!res.ok) throw new Error('전체 식당 수 조회에 실패했습니다.');
+        const list = await res.json() as RestaurantApiResponse[];
+        setTotalRestaurantCount(list.length);
+      } catch (e) {
+        console.error('전체 식당 수 조회 실패', e);
+      }
+    }
+    void fetchTotalCount();
+  }, []);
 
   const availableRestaurants = restaurants2;
   const totalPages = Math.max(1, Math.ceil(availableRestaurants.length / PAGE_SIZE));
@@ -225,7 +248,7 @@ export default function MainPage() {
                 marginTop: '8px',
               }}
             >
-              {availableRestaurants.length}
+              {totalRestaurantCount}
             </div>
             <div
               style={{
