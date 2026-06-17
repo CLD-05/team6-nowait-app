@@ -32,6 +32,7 @@ import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.slot.entity.Slot;
 import com.nowait.domain.slot.repository.SlotRepository;
+import com.nowait.domain.slot.service.SlotService;
 import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
@@ -61,6 +62,7 @@ public class ReservationService {
     private final RestaurantRepository restaurantRepository;
     private final RestaurantHourRepository restaurantHourRepository;
     private final SlotRepository slotRepository;
+    private final SlotService slotService;
     private final UserRepository userRepository;
     private final ReservationRedisLuaExecutor reservationRedis;
     private final StringRedisTemplate redisTemplate;
@@ -229,6 +231,14 @@ public class ReservationService {
             LocalDateTime.now(),
             reservation.getNoShowAt()
         );
+        
+        // ★ [핵심 추가] DB의 슬롯 카운트도 반드시 복구(Increase)해줍니다!
+        // reservation 엔티티가 가진 slot의 ID를 이용해 수량을 1 늘려줍니다.
+        if (reservation.getSlot() != null) {
+            slotService.increase(reservation.getSlot().getId());
+            log.info("Slot count restored via DB fallback. slotId={}", reservation.getSlot().getId());
+        }
+        
         log.info("Reservation cancelled via DB fallback. token={}, userId={}", token, userId);
         return ReservationResponse.from(reservation);
     }
