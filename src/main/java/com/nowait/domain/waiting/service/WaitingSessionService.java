@@ -26,6 +26,7 @@ public class WaitingSessionService {
   private final WaitingSessionRepository waitingSessionRepository;
   private final RestaurantRepository restaurantRepository;
   private final WaitingRedisLuaExecutor waitingRedis;
+  
 
   public WaitingSessionResponse getTodaySession(Long restaurantId) {
     WaitingSession session = waitingSessionRepository

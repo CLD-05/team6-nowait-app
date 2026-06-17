@@ -2,6 +2,8 @@ package com.nowait.domain.user.service;
 
 import java.util.List;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +50,12 @@ public class UserService {
 	}
 	
 	@Transactional
+    @Caching(evict = {
+        // 💥 탈퇴하는 유저가 점주일 경우를 대비해, 식당 상세 정보 캐시 전체를 안전하게 리셋합니다.
+        @CacheEvict(value = "restaurant", allEntries = true, cacheManager = "cacheManager"),
+        // 💥 해당 점주의 식당 영업시간 캐시 전체도 안전하게 함께 리셋합니다.
+        @CacheEvict(value = "restaurant_hours", allEntries = true, cacheManager = "cacheManager")
+    })
     public void withdraw(Long userId) {
         // 1. 회원 조회
         User user = userRepository.findById(userId)
