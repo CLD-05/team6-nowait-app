@@ -50,7 +50,11 @@ public class SecurityConfig {
                             "/api/v1/auth/refresh",
                             "/api/v1/auth/logout",
                             "/actuator/health",
-                            "/actuator/health/**")
+                            "/actuator/health/**",
+                            // Prometheus가 클러스터 내부에서 스크랩하는 메트릭 엔드포인트.
+                            // 외부 노출 경로가 아니라 ALB 뒤에서만 도달 가능하지만,
+                            // 인증 토큰 없이 Prometheus가 호출하므로 permitAll이 필요하다.
+                            "/actuator/prometheus")
                     .permitAll()
 
                     // 정적 이미지 공개
