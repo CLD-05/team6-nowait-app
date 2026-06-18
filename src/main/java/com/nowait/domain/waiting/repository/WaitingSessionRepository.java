@@ -4,6 +4,8 @@ import com.nowait.domain.waiting.entity.WaitingSession;
 import com.nowait.domain.waiting.type.WaitingSessionStatus;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.Collection;
@@ -30,4 +32,11 @@ public interface WaitingSessionRepository extends JpaRepository<WaitingSession, 
   // 스케줄러: 오늘 자정 지난 미마감 세션 자동 마감 (필요 시)
   List<WaitingSession> findByStatusInAndSessionDateBefore(
       Collection<WaitingSessionStatus> statuses, LocalDate date);
+
+  /*
+   * 특정 날짜에 이미 세션이 있는 restaurant_id 목록을 한 번에 조회
+   * - 식당 수만큼 existsBy... 쿼리를 반복하는 N+1을 피하기 위한 일괄 조회용
+   */
+  @Query("SELECT ws.restaurantId FROM WaitingSession ws WHERE ws.sessionDate = :sessionDate")
+  List<Long> findRestaurantIdsBySessionDate(@Param("sessionDate") LocalDate sessionDate);
 }

@@ -16,7 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -37,12 +39,14 @@ public class WaitingSessionSeedRunner implements ApplicationRunner {
         LocalDateTime now = LocalDateTime.now(TimeZones.KST);
 
         var restaurants = restaurantRepository.findAll();
+        Set<Long> existingRestaurantIds = new HashSet<>(
+                waitingSessionRepository.findRestaurantIdsBySessionDate(today));
 
         List<WaitingSession> toInit = new ArrayList<>();
 
         for (var restaurant : restaurants) {
             Long restaurantId = restaurant.getId();
-            if (!waitingSessionRepository.existsByRestaurantIdAndSessionDate(restaurantId, today)) {
+            if (!existingRestaurantIds.contains(restaurantId)) {
                 WaitingSession session = WaitingSession.open(
                         restaurantId, today, DEFAULT_MAX_WAITING, now);
                 waitingSessionRepository.save(session);

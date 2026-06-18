@@ -18,7 +18,9 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /*
@@ -70,11 +72,14 @@ public class WaitingSessionDailyOpenScheduler {
     LocalDate today = LocalDate.now(TimeZones.KST);
     LocalDateTime now = LocalDateTime.now(TimeZones.KST);
 
+    Set<Long> existingRestaurantIds = new HashSet<>(
+        waitingSessionRepository.findRestaurantIdsBySessionDate(today));
+
     List<WaitingSession> toInit = new ArrayList<>();
 
     for (var restaurant : restaurantRepository.findAll()) {
       Long restaurantId = restaurant.getId();
-      if (!waitingSessionRepository.existsByRestaurantIdAndSessionDate(restaurantId, today)) {
+      if (!existingRestaurantIds.contains(restaurantId)) {
         WaitingSession session = WaitingSession.open(
             restaurantId, today, DEFAULT_MAX_WAITING, now);
         waitingSessionRepository.save(session);
