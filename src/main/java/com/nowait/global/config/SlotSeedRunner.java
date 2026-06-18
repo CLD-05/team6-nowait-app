@@ -8,23 +8,39 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
+/*
+ * 롤링 배포 중에는 API/Worker 파드 여러 개가 거의 동시에 부팅하면서 이 러너를 동시에 실행한다.
+ * 각 파드가 독립적으로 "없는 슬롯"을 계산해 같은 슬롯을 동시에 insert하면
+ * UNIQUE 제약(restaurant_id, slot_date, slot_time) 위반으로 컨텍스트 기동이 실패하고 컨테이너가
+ * 크래시 후 재시작된다. WaitingSessionDailyOpenScheduler와 동일한 Redis SETNX 락으로
+ * 한 파드만 실행하게 막는다.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class SlotSeedRunner implements ApplicationRunner {
 
+    private static final String LOCK_KEY = "slot:seed:lock:startup";
+    private static final Duration LOCK_TTL = Duration.ofMinutes(3);
+
+    private final String podId = UUID.randomUUID().toString();
+
     private final RestaurantRepository restaurantRepository;
     private final SlotRepository slotRepository;
+    private final StringRedisTemplate redis;
 
     // 생성할 정시 슬롯 시간대
     private static final List<LocalTime> SLOT_TIMES = List.of(
@@ -34,8 +50,22 @@ public class SlotSeedRunner implements ApplicationRunner {
     );
 
     @Override
-    @Transactional
     public void run(ApplicationArguments args) {
+        Boolean acquired = redis.opsForValue().setIfAbsent(LOCK_KEY, podId, LOCK_TTL);
+        if (!Boolean.TRUE.equals(acquired)) {
+            log.info("SlotSeedRunner 건너뜀 — 다른 파드가 이미 실행 중이거나 방금 실행함.");
+            return;
+        }
+
+        try {
+            seedSlots();
+        } finally {
+            releaseLockIfOwner();
+        }
+    }
+
+    @Transactional
+    public void seedSlots() {
         LocalDate today = LocalDate.now(TimeZones.KST);
         LocalDate endDate = today.plusDays(30);
 
@@ -68,5 +98,16 @@ public class SlotSeedRunner implements ApplicationRunner {
 
         slotRepository.saveAll(toSave);
         log.info("SlotSeedRunner 완료: {}개 슬롯 생성", toSave.size());
+    }
+
+    private void releaseLockIfOwner() {
+        try {
+            String owner = redis.opsForValue().get(LOCK_KEY);
+            if (podId.equals(owner)) {
+                redis.delete(LOCK_KEY);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to release slot-seed lock — will expire by TTL.", e);
+        }
     }
 }
