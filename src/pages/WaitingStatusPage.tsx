@@ -2,7 +2,16 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { API_BASE, request } from '../lib/api';
 
-const STATUS_POLL_MS = 5000;
+// 앞에 남은 팀이 적을수록(곧 호출될수록) 더 자주 갱신한다.
+// null을 반환하면 폴링을 멈춘다 (입장 완료/취소된 종료 상태).
+function pollIntervalFor(status: string | undefined, aheadCount: number): number | null {
+  if (status === 'ENTERED' || status === 'CANCELLED') return null;
+  if (status === 'CALLED') return 2000;
+  if (aheadCount <= 2) return 2000;
+  if (aheadCount <= 5) return 4000;
+  if (aheadCount <= 10) return 7000;
+  return 10000;
+}
 
 type WaitingStatus = {
   waitingToken: string;
@@ -33,18 +42,26 @@ export default function WaitingStatusPage() {
   const [sseConnected, setSseConnected] = useState(false);
   const esRef = useRef<EventSource | null>(null);
 
+  // 가장 최근에 받은 상태값(폴링 간격 계산용) — 리렌더와 무관하게 항상 최신 값을 들고 있어야 해서 ref로 보관
+  const latestRef = useRef<{ status?: string; aheadCount: number }>({ aheadCount: 0 });
+
   const fetchStatus = useCallback(async () => {
     try {
-      let waiting: Omit<WaitingStatus, 'restaurantName' | 'totalWaiting' | 'estimatedMinutes'>;
+      let waitings: Omit<WaitingStatus, 'restaurantName' | 'totalWaiting' | 'estimatedMinutes'>[];
       try {
-        waiting = await request<Omit<WaitingStatus, 'restaurantName' | 'totalWaiting' | 'estimatedMinutes'>>('/waitings/me');
+        // /waitings/me는 사용자의 활성 웨이팅 "목록"을 반환한다 (여러 식당에 동시 웨이팅 가능).
+        // 라우트 파라미터 id(waitingToken)와 일치하는 항목만 골라서 보여준다.
+        waitings = await request<Omit<WaitingStatus, 'restaurantName' | 'totalWaiting' | 'estimatedMinutes'>[]>('/waitings/me');
       } catch {
         setData(null);
+        latestRef.current = { aheadCount: 0 };
         return;
       }
 
-      if (id && waiting.waitingToken !== id) {
+      const waiting = waitings.find(w => w.waitingToken === id);
+      if (!waiting) {
         setData(null);
+        latestRef.current = { aheadCount: 0 };
         return;
       }
 
@@ -62,6 +79,7 @@ export default function WaitingStatusPage() {
         estimatedMinutes: aheadCount * 5,
         registeredAt,
       });
+      latestRef.current = { status: waiting.status, aheadCount };
       setPulse(true);
       setTimeout(() => setPulse(false), 600);
     } finally {
@@ -69,7 +87,7 @@ export default function WaitingStatusPage() {
     }
   }, [id]);
 
-  // 최초 로드 + polling fallback
+  // 최초 로드 + 적응형 polling fallback (앞에 남은 팀이 줄어들수록 더 자주 갱신)
 useEffect(() => {
   const token = localStorage.getItem('nowait_token');
 
@@ -78,14 +96,25 @@ useEffect(() => {
     return;
   }
 
-  void fetchStatus();
+  let cancelled = false;
+  let timeoutId: number | undefined;
 
-  const timer = window.setInterval(() => {
-    void fetchStatus();
-  }, STATUS_POLL_MS);
+  const tick = async () => {
+    await fetchStatus();
+    if (cancelled) return;
+
+    const { status, aheadCount } = latestRef.current;
+    const delay = pollIntervalFor(status, aheadCount);
+    if (delay === null) return; // 종료 상태 — 더 이상 폴링하지 않음
+
+    timeoutId = window.setTimeout(() => { void tick(); }, delay);
+  };
+
+  void tick();
 
   return () => {
-    window.clearInterval(timer);
+    cancelled = true;
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
   };
 }, [fetchStatus, navigate]);
 
