@@ -32,7 +32,7 @@ public class WaitingController {
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
-  /* 사용자: 내 웨이팅 조회 (단건 — WaitingStatusPage 용) */
+  /* 사용자: 내 활성 웨이팅 목록 조회 (WaitingStatusPage에서 waitingToken으로 필터링해 사용) */
   @PreAuthorize("isAuthenticated()")
   @GetMapping("/api/v1/waitings/me")
   public ResponseEntity<List<WaitingResponse>> getMyWaitings(
