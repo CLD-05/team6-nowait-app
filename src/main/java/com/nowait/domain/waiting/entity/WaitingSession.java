@@ -96,6 +96,23 @@ public class WaitingSession {
         this.closedAt = closedAt;
     }
 
+    /* CLOSED → OPEN (당일 재오픈) */
+    public void reopen(int maxWaitingCount, LocalDateTime reopenedAt) {
+        if (status != WaitingSessionStatus.CLOSED) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE,
+                    "마감된 세션만 재오픈할 수 있습니다.");
+        }
+        if (maxWaitingCount < 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE,
+                    "최대 대기 인원은 0 이상이어야 합니다.");
+        }
+        this.status = WaitingSessionStatus.OPEN;
+        this.maxWaitingCount = maxWaitingCount;
+        this.currentCount = 0;
+        this.closedAt = null;
+        this.openedAt = reopenedAt;
+    }
+
     /* 손님 등록 시 호출 */
     public void increaseCurrentCount() {
         if (!status.canAcceptWaiting()) {

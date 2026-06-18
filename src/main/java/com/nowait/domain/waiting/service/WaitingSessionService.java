@@ -15,8 +15,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.nowait.domain.waiting.type.WaitingSessionStatus;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -44,8 +47,19 @@ public class WaitingSessionService {
     verifyOwnership(restaurantId, loginUserId);
 
     LocalDate today = LocalDate.now(TimeZones.KST);
-    if (waitingSessionRepository.existsByRestaurantIdAndSessionDate(restaurantId, today)) {
-      throw new BusinessException(ErrorCode.WAITING_SESSION_ALREADY_EXISTS);
+    Optional<WaitingSession> existingOpt =
+        waitingSessionRepository.findByRestaurantIdAndSessionDate(restaurantId, today);
+
+    if (existingOpt.isPresent()) {
+      WaitingSession existing = existingOpt.get();
+      if (existing.getStatus() != WaitingSessionStatus.CLOSED) {
+        throw new BusinessException(ErrorCode.WAITING_SESSION_ALREADY_EXISTS);
+      }
+      // 당일 마감된 세션 재오픈
+      existing.reopen(request.maxWaitingCount(), LocalDateTime.now(TimeZones.KST));
+      waitingRedis.initSession(existing.getId());
+      log.info("Waiting session reopened. sessionId={}, restaurantId={}", existing.getId(), restaurantId);
+      return WaitingSessionResponse.from(existing, 0);
     }
 
     WaitingSession session = WaitingSession.open(
