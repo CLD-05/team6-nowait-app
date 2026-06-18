@@ -8,6 +8,7 @@
 -- KEYS[6] = reservation:pending-sync
 -- KEYS[7] = reservation:user:{userId}:tokens   (사용자별 토큰 목록 — score=createdAt)
 -- KEYS[8] = reservation:restaurant:{restaurantId}:tokens  (매장별 토큰 목록 — score=createdAt)
+-- KEYS[9] = reservation:user-restaurant-date:{userId}:{restaurantId}:{date}  (같은 매장·같은 날짜 중복 방지)
 --
 -- ARGV[1] = userId
 -- ARGV[2] = restaurantId
@@ -21,7 +22,7 @@
 --
 -- 반환:
 --   성공: { 1, token }
---   실패: { 0, errorCode } — DUPLICATE_RESERVATION / SLOT_FULL
+--   실패: { 0, errorCode } — DUPLICATE_RESERVATION / DUPLICATE_RESERVATION_SAME_DAY / SLOT_FULL
 
 -- 1) 동일 슬롯 중복 예약 차단 (PENDING/CONFIRMED 상태일 때만)
 if redis.call('EXISTS', KEYS[4]) == 1 then
@@ -33,6 +34,18 @@ if redis.call('EXISTS', KEYS[4]) == 1 then
     redis.call('DEL', KEYS[4])
   else
     return { 0, 'DUPLICATE_RESERVATION' }
+  end
+end
+
+-- 1-1) 같은 매장·같은 날짜 중복 예약 차단 (시간대가 달라도 활성 예약은 1건만)
+if redis.call('EXISTS', KEYS[9]) == 1 then
+  local existingDayToken = redis.call('GET', KEYS[9])
+  local existingDayStatus = redis.call('HGET', 'reservation:token:' .. existingDayToken, 'status')
+  if existingDayStatus == 'CANCELLED' or existingDayStatus == 'REJECTED'
+      or existingDayStatus == 'VISITED' or existingDayStatus == 'NO_SHOW' then
+    redis.call('DEL', KEYS[9])
+  else
+    return { 0, 'DUPLICATE_RESERVATION_SAME_DAY' }
   end
 end
 
@@ -57,8 +70,9 @@ redis.call('HMSET', KEYS[3],
   'reservationTime',  ARGV[8])
 redis.call('EXPIRE', KEYS[3], ARGV[9])
 
--- 5) 사용자-슬롯 중복 매핑
+-- 5) 사용자-슬롯 중복 매핑 / 사용자-매장-날짜 중복 매핑
 redis.call('SET', KEYS[4], ARGV[6], 'EX', ARGV[9])
+redis.call('SET', KEYS[9], ARGV[6], 'EX', ARGV[9])
 
 -- 6) 노쇼 후보 등록은 점주 승인(approve) 시점으로 이동 — PENDING 단계에서는 제외
 

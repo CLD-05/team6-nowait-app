@@ -195,6 +195,7 @@ public class WaitingRedisLuaExecutor {
         WaitingRedisKeys.count(sessionId), "0", SESSION_TTL);
     redisTemplate.opsForSet().add(
         WaitingRedisKeys.ACTIVE_SESSIONS, String.valueOf(sessionId));
+    
   }
 
   /* 세션 마감 시 키 정리 + 활성 세션 해제 */

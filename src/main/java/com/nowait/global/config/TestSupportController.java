@@ -18,17 +18,19 @@ import lombok.extern.slf4j.Slf4j;
 public class TestSupportController {
 	
 	private final TestDatabaseCleanUpService databaseCleanUpService;
-	
-	// application.yml에 적어둘 토큰 값을 가져옵니다. (기본값 설정)
-	@Value("${test.secret-token:nowait-k6-default-secret-token}")
+
+	// application.yml/env(TEST_SECRET_TOKEN)에 명시적으로 설정해야만 동작합니다. 기본값을 두지 않음으로써
+	// 토큰을 설정하지 않은 환경(예: 운영)에서는 이 엔드포인트가 절대 통과되지 않도록 합니다.
+	@Value("${test.secret-token:}")
 	private String secretToken;
-	
+
 	@PostMapping("/reset")
 	public ResponseEntity<String> resetDatabase(
 			@RequestHeader(value = "X-Test-Token", required = false) String requestToken
 			) {
-		// 🔒 시크릿 토큰 보안 검증
-		if (requestToken == null || !requestToken.equals(secretToken)) {
+		// 🔒 시크릿 토큰 보안 검증 — secretToken이 설정되지 않았으면 항상 거부
+		if (secretToken == null || secretToken.isBlank()
+				|| requestToken == null || !requestToken.equals(secretToken)) {
 			log.warn("올바르지 않은 토큰으로 DB 초기화 요청이 거부되었습니다.");
 			return ResponseEntity.status(HttpStatus.FORBIDDEN)
 					.body("인증 토큰이 올바르지 않습니다. 데이터베이스 초기화가 거부되었습니다.");

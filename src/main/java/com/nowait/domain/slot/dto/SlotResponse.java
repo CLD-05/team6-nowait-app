@@ -39,6 +39,8 @@ public class SlotResponse {
         private int totalCount;
         private int remainCount;
         private boolean available;
+        private int minHeadcount;
+        private int maxHeadcount;
 
         public static SlotInfo from(Slot slot) {
             return SlotInfo.builder()
@@ -47,6 +49,8 @@ public class SlotResponse {
                 .totalCount(slot.getTotalCount())
                 .remainCount(slot.getRemainCount())
                 .available(slot.isAvailable())
+                .minHeadcount(slot.getMinHeadcount())
+                .maxHeadcount(slot.getMaxHeadcount())
                 .build();
         }
     }
