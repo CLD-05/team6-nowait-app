@@ -58,7 +58,7 @@ public class ImageController {
             imageKey
         );
 
-        String readableImageUrl = s3Service.generatePresignedGetUrl(imageKey);
+        String readableImageUrl = s3Service.buildPublicUrl(imageKey);
 
         return ResponseEntity.ok(new ImageCompleteResponse(readableImageUrl));
     }

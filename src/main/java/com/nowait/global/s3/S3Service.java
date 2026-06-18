@@ -7,8 +7,6 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.time.Duration;
 import java.util.UUID;
@@ -64,19 +62,15 @@ public class S3Service {
 
     public record PresignedUrlResult(String presignedUrl, String imageKey) {}
 
-    public String generatePresignedGetUrl(String imageKey) {
-    GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-        .bucket(bucket)
-        .key(imageKey)
-        .build();
-
-    GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-        .signatureDuration(Duration.ofMinutes(expiryMinutes))
-        .getObjectRequest(getObjectRequest)
-        .build();
-
-    return s3Presigner.presignGetObject(presignRequest).url().toString();
-}
+    /*
+     * 식당 이미지는 비공개 정보가 아니므로 presigned GET URL(만료 있음) 대신
+     * 영구 공개 URL을 돌려준다. presigned URL을 API 응답/프론트 상태에 들고 있다가
+     * 만료 후 403이 나는 문제를 근본적으로 없앤다. 버킷은 restaurants/* 경로에 대해
+     * 공개 읽기를 허용하도록 설정되어 있어야 한다.
+     */
+    public String buildPublicUrl(String imageKey) {
+        return "https://" + bucket + ".s3." + regionPart() + ".amazonaws.com/" + imageKey;
+    }
 
     public String resolveReadableImageUrl(String storedImageUrl) {
         if (storedImageUrl == null || storedImageUrl.isBlank()) {
@@ -90,14 +84,19 @@ public class S3Service {
 
         // 새 업로드 이미지: S3 key
         if (storedImageUrl.startsWith("restaurants/")) {
-            return generatePresignedGetUrl(storedImageUrl);
+            return buildPublicUrl(storedImageUrl);
         }
 
-        // 이미 S3 직접 URL로 저장된 기존 데이터 보정
+        // 이미 S3 직접 URL로 저장된 기존 데이터(과거 presigned URL 포함) 보정
         String s3Prefix = "https://" + bucket + ".s3." + regionPart() + ".amazonaws.com/";
         if (storedImageUrl.startsWith(s3Prefix)) {
             String imageKey = storedImageUrl.substring(s3Prefix.length());
-            return generatePresignedGetUrl(imageKey);
+            // 과거에 presigned 쿼리스트링까지 저장된 행이 있을 수 있어 키 부분만 추출
+            int queryIndex = imageKey.indexOf('?');
+            if (queryIndex >= 0) {
+                imageKey = imageKey.substring(0, queryIndex);
+            }
+            return buildPublicUrl(imageKey);
         }
 
         return storedImageUrl;
