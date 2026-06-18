@@ -56,9 +56,9 @@ public class TestDatabaseCleanUpService {
 			// 🔒 [Flyway 및 필수 데이터 보호 장치]
 	        // flyway_schema_history: Flyway가 관리하는 핵심 기록 테이블 (절대 지우면 안 됨)
 	        // restaurants, menus: 유지하고 싶은 기초 더미데이터 테이블 이름 (우리 프로젝트에 맞게 수정)
-	        if (tableName.equalsIgnoreCase("flyway_schema_history") || 
-	                tableName.equalsIgnoreCase("user") || 
-	                tableName.equalsIgnoreCase("restaurant") || 
+	        if (tableName.equalsIgnoreCase("flyway_schema_history") ||
+	                tableName.equalsIgnoreCase("users") ||
+	                tableName.equalsIgnoreCase("restaurant") ||
 	                tableName.equalsIgnoreCase("restaurant_hours") || 
 	                tableName.equalsIgnoreCase("restaurant_owners") || 
 	                tableName.equalsIgnoreCase("slots") || 
