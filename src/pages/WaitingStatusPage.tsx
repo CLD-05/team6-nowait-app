@@ -65,7 +65,10 @@ export default function WaitingStatusPage() {
         return;
       }
 
-      const restaurant = await request<{ name?: string }>(`/restaurants/${waiting.restaurantId}`).catch(() => null);
+      const restaurantResponse = await fetch(`${API_BASE}/restaurants/${waiting.restaurantId}`);
+      const restaurant = restaurantResponse.ok
+        ? await restaurantResponse.json() as { name?: string }
+        : null;
       const aheadCount = waiting.aheadCount ?? 0;
       const registeredAt = formatDateTime(waiting.registeredAt);
       setData({
@@ -124,9 +127,13 @@ useEffect(() => {
 
     const connect = async () => {
       try {
-        const { ticket } = await request<{ ticket: string }>('/notifications/stream/ticket', { method: 'POST' });
+        const res = await fetch(`${API_BASE}/notifications/stream/ticket`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const { ticket } = await res.json() as { ticket: string };
 
-        // EventSource는 fetch 래퍼를 못 쓰므로 API_BASE를 직접 사용한다.
         es = new EventSource(`${API_BASE}/notifications/stream?ticket=${ticket}`);
         esRef.current = es;
 

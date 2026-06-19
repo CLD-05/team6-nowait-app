@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
-import { ApiError, request, resolveImageUrl } from '../lib/api';
+import { API_BASE, ApiError, request, resolveImageUrl } from '../lib/api';
 import './StoreManagementPage.css';
 
 type Category = 'KOREAN' | 'JAPANESE' | 'CHINESE' | 'WESTERN' | 'ASIAN';
@@ -394,12 +394,15 @@ export default function StoreManagementPage() {
     setImageMsg('');
     try {
       // 1) Presigned URL 발급
-      const { presignedUrl, imageKey } = await request<{ presignedUrl: string; imageKey: string }>(
-        `/images/presigned-url?restaurantId=${targetRestaurantId}&filename=${encodeURIComponent(file.name)}`,
-        { method: 'POST' }
+      const token = localStorage.getItem('nowait_token');
+      const presignRes = await fetch(
+        `${API_BASE}/images/presigned-url?restaurantId=${targetRestaurantId}&filename=${encodeURIComponent(file.name)}`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
       );
+      if (!presignRes.ok) throw new Error('Presigned URL 발급에 실패했습니다.');
+      const { presignedUrl, imageKey } = await presignRes.json() as { presignedUrl: string; imageKey: string };
 
-      // 2) S3 직접 업로드 — presignedUrl은 S3 origin이라 우리 API_BASE를 거치지 않으므로 raw fetch를 그대로 쓴다.
+      // 2) S3 직접 업로드
       const uploadRes = await fetch(presignedUrl, {
         method: 'PUT',
         headers: { 'Content-Type': file.type },
@@ -408,10 +411,13 @@ export default function StoreManagementPage() {
       if (!uploadRes.ok) throw new Error('S3 업로드에 실패했습니다.');
 
       // 3) complete API 호출 → DB에 S3 URL 저장
-      const { imageUrl } = await request<{ imageUrl: string }>('/images/complete', {
+      const completeRes = await fetch(`${API_BASE}/images/complete`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ restaurantId: targetRestaurantId, imageKey }),
       });
+      if (!completeRes.ok) throw new Error('이미지 저장에 실패했습니다.');
+      const { imageUrl } = await completeRes.json() as { imageUrl: string };
 
       // 4) 화면에 반영
       updateField('imageUrl', imageUrl);

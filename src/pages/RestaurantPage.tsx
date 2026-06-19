@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { API_BASE, ApiError, request, resolveImageUrl } from '../lib/api';
+import { API_BASE, request, resolveImageUrl } from '../lib/api';
 
 const CAT_LABEL: Record<string, string> = {
   KOREAN: '한식', JAPANESE: '일식', CHINESE: '중식', WESTERN: '양식', ASIAN: '아시안',
@@ -176,12 +176,13 @@ export default function RestaurantPage() {
   const fetchRestaurant = useCallback(async () => {
     setLoading(true);
     try {
-      const [detail, hours] = await Promise.all([
-        request<RestaurantDetail>(`/restaurants/${id}`),
-        request<RestaurantHour[]>(`/restaurants/${id}/hours`).catch(() => []),
+      const [detailResponse, hoursResponse] = await Promise.all([
+        fetch(`${API_BASE}/restaurants/${id}`),
+        fetch(`${API_BASE}/restaurants/${id}/hours`),
       ]);
-      setRestaurant(detail);
-      setRestaurantHours(hours);
+      if (!detailResponse.ok) throw new Error('식당 정보를 불러오지 못했습니다.');
+      setRestaurant(await detailResponse.json() as RestaurantDetail);
+      setRestaurantHours(hoursResponse.ok ? await hoursResponse.json() as RestaurantHour[] : []);
     } finally {
       setLoading(false);
     }
@@ -193,7 +194,9 @@ export default function RestaurantPage() {
    */
   const fetchSlots = useCallback(async (date: string) => {
     try {
-      const data = await request<{ slots?: Slot[] } | Slot[]>(`/restaurants/${id}/slots?date=${date}`);
+      const res = await fetch(`${API_BASE}/restaurants/${id}/slots?date=${date}`);
+      if (!res.ok) throw new Error('슬롯 정보를 불러오지 못했습니다.');
+      const data = await res.json() as { slots?: Slot[] } | Slot[];
       // 백엔드 응답: { restaurantId, date, slots: [...] }
       const raw = Array.isArray(data) ? data : (data.slots || []);
 
@@ -226,21 +229,23 @@ export default function RestaurantPage() {
   /** 웨이팅 세션 조회 */
   const fetchWaitingSession = useCallback(async () => {
     try {
-      const data = await request<WaitingSession>(`/restaurants/${id}/waiting-session`);
-      setWaitingSession(data);
-      setWaitingSessionError(false);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
+      const res = await fetch(`${API_BASE}/restaurants/${id}/waiting-session`);
+      if (res.ok) {
+        setWaitingSession(await res.json() as WaitingSession);
+        setWaitingSessionError(false);
+      } else if (res.status === 404) {
         // 오늘 오픈된 세션이 없는 정상적인 상태 — 에러가 아니다.
         setWaitingSession(null);
         setWaitingSessionError(false);
       } else {
-        // 네트워크 오류 등 — "세션 없음"과 구분해서 보여줘야 한다.
         setWaitingSession(null);
         setWaitingSessionError(true);
       }
-    } finally {
       setWaitingUpdatedAt(new Date());
+    } catch {
+      // 네트워크 오류 등 — "세션 없음"과 구분해서 보여줘야 한다.
+      setWaitingSession(null);
+      setWaitingSessionError(true);
     }
   }, [id]);
 
@@ -268,9 +273,14 @@ export default function RestaurantPage() {
 
     try {
       // 1) 단발 티켓 발급
-      const { ticket } = await request<{ ticket: string }>('/notifications/stream/ticket', { method: 'POST' });
+      const res = await fetch(`${API_BASE}/notifications/stream/ticket`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const { ticket } = await res.json() as { ticket: string };
 
-      // 2) SSE 연결 — EventSource는 fetch 래퍼를 못 쓰므로 API_BASE를 직접 사용한다.
+      // 2) SSE 연결
       const es = new EventSource(`${API_BASE}/notifications/stream?ticket=${ticket}`);
       sseRef.current = es;
 
@@ -339,19 +349,23 @@ export default function RestaurantPage() {
     if (!token) { navigate('/auth'); return; }
     setReserveLoading(true);
     try {
-      await request('/reservations', {
+      const res = await fetch(`${API_BASE}/reservations`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           restaurantId: Number(id),
           slotId: selectedSlot.slotId, // ← slotId 사용
           headcount,
         }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || '예약에 실패했습니다.');
+        // 실패 후 슬롯 즉시 재조회 (다른 사람이 예약해서 마감됐을 수 있음)
+        void fetchSlots(selectedDate);
+        return;
+      }
       navigate('/mypage');
-    } catch (err) {
-      alert(err instanceof Error ? err.message : '예약에 실패했습니다.');
-      // 실패 후 슬롯 즉시 재조회 (다른 사람이 예약해서 마감됐을 수 있음)
-      void fetchSlots(selectedDate);
     } finally {
       setReserveLoading(false);
     }
@@ -362,15 +376,19 @@ export default function RestaurantPage() {
     if (!token) { navigate('/auth'); return; }
     setWaitingLoading(true);
     try {
-      await request(`/restaurants/${id}/waitings`, {
+      const res = await fetch(`${API_BASE}/restaurants/${id}/waitings`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ partySize }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || '웨이팅 등록에 실패했습니다.');
+        return;
+      }
       // 등록 직후 웨이팅 세션 즉시 갱신
       await fetchWaitingSession();
       navigate('/mypage');
-    } catch (err) {
-      alert(err instanceof Error ? err.message : '웨이팅 등록에 실패했습니다.');
     } finally {
       setWaitingLoading(false);
     }
