@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE, resolveImageUrl } from '../lib/api';
+import { request, resolveImageUrl } from '../lib/api';
 
 type Reservation = {
   reservationToken: string;
@@ -110,60 +110,26 @@ export default function MyPage() {
     try {
       const token = localStorage.getItem('nowait_token');
       if (!token) { navigate('/auth'); return; }
-      const h = { Authorization: `Bearer ${token}` };
 
       // 각 API를 독립적으로 처리 — 하나가 실패해도 나머지는 정상 표시
-      const [r1, r2, r3, r4, r5] = await Promise.all([
-        fetch(`${API_BASE}/reservations/me`, { headers: h }),
-        fetch(`${API_BASE}/waitings/me/history`, { headers: h }),
-        fetch(`${API_BASE}/users/me/favorites`, { headers: h }),
-        fetch(`${API_BASE}/notifications/me`, { headers: h }),
-        fetch(`${API_BASE}/users/me/reviews`, { headers: h }),
+      const [reservationsResult, waitingsResult, favoritesResult, notificationsResult, reviewsResult] = await Promise.all([
+        request<Reservation[]>('/reservations/me').catch((e: unknown) => { console.error('예약 목록 조회 실패:', e); return null; }),
+        request<Waiting[]>('/waitings/me/history').catch(() => null),
+        request<Favorite[]>('/users/me/favorites').catch((e: unknown) => { console.error('즐겨찾기 조회 실패:', e); return null; }),
+        request<Notification[]>('/notifications/me').catch((e: unknown) => { console.error('알림 조회 실패:', e); return null; }),
+        request<Review[]>('/users/me/reviews').catch((e: unknown) => { console.error('리뷰 목록 조회 실패:', e); return null; }),
       ]);
 
-      if (r1.status === 401) { navigate('/auth'); return; }
+      setReservations(reservationsResult ?? []);
+      setFavorites(favoritesResult ?? []);
+      setNotifications(notificationsResult ?? []);
+      setReviews(reviewsResult ?? []);
 
-      if (r1.ok) {
-        setReservations(await r1.json() as Reservation[]);
-      } else {
-        console.error('예약 목록 조회 실패:', r1.status);
-        setReservations([]);
-      }
-
-      if (r3.ok) {
-        setFavorites(await r3.json() as Favorite[]);
-      } else {
-        console.error('즐겨찾기 조회 실패:', r3.status);
-        setFavorites([]);
-      }
-
-      if (r4.ok) {
-        setNotifications(await r4.json() as Notification[]);
-      } else {
-        console.error('알림 조회 실패:', r4.status);
-        setNotifications([]);
-      }
-
-      if (r5.ok) {
-        setReviews(await r5.json() as Review[]);
-      } else {
-        console.error('리뷰 목록 조회 실패:', r5.status);
-        setReviews([]);
-      }
-
-      if (r2.ok) {
-        const waitingList = await r2.json() as Waiting[];
+      if (waitingsResult) {
         const waitingsWithNames = await Promise.all(
-          waitingList.map(async (waiting) => {
-            try {
-              const restaurantResponse = await fetch(`${API_BASE}/restaurants/${waiting.restaurantId}`);
-              const restaurant = restaurantResponse.ok
-                ? await restaurantResponse.json() as { name?: string }
-                : null;
-              return { ...waiting, restaurantName: restaurant?.name };
-            } catch {
-              return waiting;
-            }
+          waitingsResult.map(async (waiting) => {
+            const restaurant = await request<{ name?: string }>(`/restaurants/${waiting.restaurantId}`).catch(() => null);
+            return { ...waiting, restaurantName: restaurant?.name };
           })
         );
         setWaitings(waitingsWithNames);
@@ -185,19 +151,16 @@ export default function MyPage() {
 
   async function updateName() {
     if (!nameInput.trim()) return;
-    const token = localStorage.getItem('nowait_token');
-    const res = await fetch(`${API_BASE}/users/me`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: nameInput.trim() }),
-    });
-    if (res.ok) {
-      const updated = await res.json() as { name: string; email: string };
+    try {
+      const updated = await request<{ name: string; email: string }>('/users/me', {
+        method: 'PATCH',
+        body: JSON.stringify({ name: nameInput.trim() }),
+      });
       const stored = JSON.parse(localStorage.getItem('nowait_user') || '{}') as StoredUser;
       localStorage.setItem('nowait_user', JSON.stringify({ ...stored, name: updated.name }));
       setEditingName(false);
       window.location.reload();
-    } else {
+    } catch {
       alert('이름 변경에 실패했습니다.');
     }
   }
@@ -210,15 +173,11 @@ export default function MyPage() {
 
   async function withdrawAccount() {
     if (!confirm('정말 탈퇴하시겠어요? 모든 데이터가 삭제됩니다.')) return;
-    const token = localStorage.getItem('nowait_token');
-    const res = await fetch(`${API_BASE}/users/me`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
+    try {
+      await request('/users/me', { method: 'DELETE' });
       alert('탈퇴가 완료됐습니다.');
       logout();
-    } else {
+    } catch {
       alert('탈퇴 처리 중 오류가 발생했습니다.');
     }
   }
@@ -226,38 +185,20 @@ export default function MyPage() {
   async function cancelReservation(reservationToken: string) {
     if (!confirm('예약을 취소하시겠어요?')) return;
     try {
-      const token = localStorage.getItem('nowait_token');
-      const response = await fetch(`${API_BASE}/reservations/${reservationToken}/cancel`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({})) as { message?: string };
-        alert(err.message || '예약 취소에 실패했습니다.');
-        return;
-      }
+      await request(`/reservations/${reservationToken}/cancel`, { method: 'PATCH' });
       await fetchData();
-    } catch {
-      alert('예약 취소 중 오류가 발생했습니다.');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '예약 취소에 실패했습니다.');
     }
   }
 
   async function cancelWaiting(waitingToken: string) {
     if (!confirm('웨이팅을 취소하시겠어요?')) return;
     try {
-      const token = localStorage.getItem('nowait_token');
-      const response = await fetch(`${API_BASE}/waitings/${waitingToken}/cancel`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({})) as { message?: string };
-        alert(err.message || '웨이팅 취소에 실패했습니다.');
-        return;
-      }
+      await request(`/waitings/${waitingToken}/cancel`, { method: 'PATCH' });
       await fetchData();
-    } catch {
-      alert('웨이팅 취소 중 오류가 발생했습니다.');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '웨이팅 취소에 실패했습니다.');
     }
   }
 
@@ -293,16 +234,10 @@ export default function MyPage() {
     if (!confirm(`선택한 ${selectedTokens.size}건의 내역을 삭제하시겠어요?`)) return;
     setDeleteLoading(true);
     try {
-      const jwtToken = localStorage.getItem('nowait_token');
-      const results = await Promise.all(
-        [...selectedTokens].map(resToken =>
-          fetch(`${API_BASE}/reservations/${resToken}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${jwtToken}` },
-          })
-        )
+      const results = await Promise.allSettled(
+        [...selectedTokens].map(resToken => request(`/reservations/${resToken}`, { method: 'DELETE' }))
       );
-      const failed = results.filter(r => !r.ok).length;
+      const failed = results.filter(r => r.status === 'rejected').length;
       if (failed > 0) alert(`${failed}건 삭제에 실패했습니다.`);
       setSelectedTokens(new Set());
       await fetchData();
@@ -315,16 +250,12 @@ export default function MyPage() {
 
   async function removeFavorite(restaurantId: number) {
     if (!confirm('즐겨찾기를 삭제하시겠어요?')) return;
-    const token = localStorage.getItem('nowait_token');
-    const response = await fetch(`${API_BASE}/restaurants/${restaurantId}/favorite`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) throw new Error('즐겨찾기 해제에 실패했습니다.');
+    await request(`/restaurants/${restaurantId}/favorite`, { method: 'POST' });
     await fetchData();
   }
 
   async function markAllRead() {
-    const token = localStorage.getItem('nowait_token');
-    const response = await fetch(`${API_BASE}/notifications/read-all`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) throw new Error('알림 읽음 처리에 실패했습니다.');
+    await request('/notifications/read-all', { method: 'PATCH' });
     setNotifications(prev => prev.map(n => ({ ...n, isRead: 'Y' })));
   }
 
@@ -687,13 +618,12 @@ export default function MyPage() {
                         <button className="btn btn-sm" style={{ background: 'var(--tomato)', color: '#fff', border: '2px solid var(--ink)', fontSize: '0.78rem' }}
                           onClick={async () => {
                             if (!confirm('리뷰를 삭제할까요?')) return;
-                            const token = localStorage.getItem('nowait_token');
-                            const res = await fetch(`${API_BASE}/reviews/${r.reviewId}`, {
-                              method: 'DELETE',
-                              headers: { Authorization: `Bearer ${token}` },
-                            });
-                            if (res.ok) setReviews(prev => prev.filter(x => x.reviewId !== r.reviewId));
-                            else alert('삭제에 실패했습니다.');
+                            try {
+                              await request(`/reviews/${r.reviewId}`, { method: 'DELETE' });
+                              setReviews(prev => prev.filter(x => x.reviewId !== r.reviewId));
+                            } catch {
+                              alert('삭제에 실패했습니다.');
+                            }
                           }}>
                           삭제
                         </button>

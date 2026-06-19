@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect } from 'react';
-import { API_BASE, resolveImageUrl } from '../lib/api';
+import { request, resolveImageUrl } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 
@@ -70,11 +70,7 @@ export default function MainPage() {
       const params = new URLSearchParams();
       if (category) params.append('category', category);
       if (appliedKeyword.trim()) params.append('keyword', appliedKeyword.trim());
-      const res = await fetch(`${API_BASE}/restaurants?${params}`, {
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!res.ok) throw new Error('식당 목록 조회에 실패했습니다.');
-      const list = await res.json() as RestaurantApiResponse[];
+      const list = await request<RestaurantApiResponse[]>(`/restaurants?${params}`);
 
       // API 응답 필드명 → React 타입 매핑
       setRestaurants2(list.map(r => ({
@@ -108,11 +104,7 @@ export default function MainPage() {
   useEffect(() => {
     async function fetchTotalCount() {
       try {
-        const res = await fetch(`${API_BASE}/restaurants`, {
-          headers: { 'Content-Type': 'application/json' },
-        });
-        if (!res.ok) throw new Error('전체 식당 수 조회에 실패했습니다.');
-        const list = await res.json() as RestaurantApiResponse[];
+        const list = await request<RestaurantApiResponse[]>('/restaurants');
         setTotalRestaurantCount(list.length);
       } catch (e) {
         console.error('전체 식당 수 조회 실패', e);

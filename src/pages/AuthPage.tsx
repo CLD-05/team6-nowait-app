@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import Logo from '../components/Logo';
 
-import { API_BASE } from '../lib/api';
+import { ApiError, request } from '../lib/api';
 
 type AuthTab = 'login' | 'signup';
 type UserRole = 'USER' | 'OWNER';
@@ -39,24 +39,18 @@ export default function AuthPage() {
     setError('');
 
     try {
-      const response = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!response.ok) {
-        setError('이메일 또는 비밀번호가 일치하지 않습니다.');
-        return;
-      }
-
-      const data = await response.json() as {
+      const data = await request<{
         accessToken: string;
         userId: number;
         email: string;
         name: string;
         role: UserRole;
-      };
+      }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+        // 로그인 실패의 401은 "세션 만료"가 아니라 정상적인 실패 응답이므로 전역 리다이렉트를 건너뛴다.
+        skipAuthRedirect: true,
+      });
       localStorage.setItem('nowait_token', data.accessToken);
       localStorage.setItem('nowait_user', JSON.stringify({
         id: data.userId,
@@ -66,7 +60,7 @@ export default function AuthPage() {
       }));
       navigate('/', { replace: true });
     } catch {
-      setError('로그인 중 오류가 발생했습니다.');
+      setError('이메일 또는 비밀번호가 일치하지 않습니다.');
     } finally {
       setLoading(false);
     }
@@ -88,25 +82,15 @@ export default function AuthPage() {
 
     try {
       const signupPath = role === 'OWNER' ? '/auth/signup/owner' : '/auth/signup';
-      const response = await fetch(`${API_BASE}${signupPath}`, {
+      await request(signupPath, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, name }),
       });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({})) as {
-          message?: string;
-          errors?: Array<{ reason?: string }>;
-        };
-        setError(error.errors?.[0]?.reason || error.message || '회원가입에 실패했습니다.');
-        return;
-      }
-
       alert('회원가입이 완료되었습니다. 로그인해주세요.');
       switchTab('login');
-    } catch {
-      setError('회원가입 중 오류가 발생했습니다.');
+    } catch (err) {
+      const fieldReason = err instanceof ApiError ? err.errors?.[0]?.reason : undefined;
+      setError(fieldReason || (err instanceof Error ? err.message : '회원가입에 실패했습니다.'));
     } finally {
       setLoading(false);
     }

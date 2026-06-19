@@ -41,34 +41,45 @@ function normalizePath(path: string): string {
   return path.startsWith('/') ? path : `/${path}`;
 }
 
+/** 필드별 검증 에러. 백엔드 ErrorResponse.errors와 동일한 모양이다. */
+export type ApiFieldError = { field?: string; value?: string; reason?: string };
+
 /** status를 들고 있는 API 에러. 호출부에서 404 등 특정 상태코드를 구분해야 할 때 사용한다. */
 export class ApiError extends Error {
   status: number;
+  errors?: ApiFieldError[];
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, errors?: ApiFieldError[]) {
     super(message);
     this.status = status;
+    this.errors = errors;
   }
 }
 
+type RequestOptions = RequestInit & {
+  /** 로그인처럼 401이 "세션 만료"가 아니라 정상적인 실패 응답인 호출에서 전역 리다이렉트를 막는다. */
+  skipAuthRedirect?: boolean;
+};
+
 export async function request<T>(
   path: string,
-  options: RequestInit = {},
+  options: RequestOptions = {},
 ): Promise<T> {
+  const { skipAuthRedirect, ...fetchOptions } = options;
   const token = getToken();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...((options.headers as Record<string, string>) || {}),
+    ...((fetchOptions.headers as Record<string, string>) || {}),
   };
 
   const res = await fetch(`${API_BASE}${normalizePath(path)}`, {
-    ...options,
+    ...fetchOptions,
     headers,
   });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !skipAuthRedirect) {
     localStorage.removeItem('nowait_token');
     localStorage.removeItem('nowait_user');
     window.location.href = '/auth';
@@ -77,7 +88,7 @@ export async function request<T>(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, err.message || '요청 처리 중 오류가 발생했습니다.');
+    throw new ApiError(res.status, err.message || '요청 처리 중 오류가 발생했습니다.', err.errors);
   }
 
   if (res.status === 204) {
