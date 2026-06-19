@@ -1,5 +1,6 @@
 package com.nowait.domain.waiting.worker;
 
+import com.nowait.domain.waiting.monitoring.WaitingMetrics;
 import com.nowait.domain.waiting.redis.WaitingRedisKeys;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class WaitingSyncWorker {
 
   private final StringRedisTemplate redis;
   private final WaitingSyncHandler handler;
+  private final WaitingMetrics waitingMetrics;
 
   @Value("${worker.waiting.batch-size:50}")
   private int batchSize;
@@ -77,11 +79,13 @@ public class WaitingSyncWorker {
         if (ok) {
           redis.opsForList().remove(WaitingRedisKeys.PROCESSING, 1, token);
         } else {
+          waitingMetrics.persistFailed();
           moveToDeadLetter(token, "handler returned false");
         }
         processed++;
       } catch (Exception e) {
         log.error("Failed to sync token={}. Moving to dead-letter.", token, e);
+        waitingMetrics.persistFailed();
         moveToDeadLetter(token, e.getClass().getSimpleName() + ": " + e.getMessage());
       }
     }
@@ -94,5 +98,6 @@ public class WaitingSyncWorker {
     redis.opsForList().remove(WaitingRedisKeys.PROCESSING, 1, token);
     redis.opsForList().leftPush(WaitingRedisKeys.DEAD_LETTER,
         token + "|" + System.currentTimeMillis() + "|" + reason);
+    waitingMetrics.deadLettered();
   }
 }

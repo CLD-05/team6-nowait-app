@@ -1,6 +1,7 @@
 package com.nowait.domain.waiting.worker;
 
 import com.nowait.domain.waiting.entity.Waiting;
+import com.nowait.domain.waiting.monitoring.WaitingMetrics;
 import com.nowait.domain.waiting.redis.WaitingRedisLuaExecutor;
 import com.nowait.domain.waiting.redis.WaitingTokenData;
 import com.nowait.domain.waiting.repository.WaitingRepository;
@@ -33,6 +34,7 @@ public class WaitingSyncHandler {
 
   private final WaitingRepository waitingRepository;
   private final WaitingRedisLuaExecutor waitingRedis;
+  private final WaitingMetrics waitingMetrics;
 
   /*
    * @return true 면 정상 처리, false 면 일시적 오류 (재시도 대상).
@@ -73,6 +75,7 @@ public class WaitingSyncHandler {
         }
     );
 
+    waitingMetrics.persistSucceeded(data.registeredAt());
     log.debug("Synced. token={} status={}", token, data.status());
     return true;
   }

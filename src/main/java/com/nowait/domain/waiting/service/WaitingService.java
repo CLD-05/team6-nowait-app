@@ -27,6 +27,7 @@ import com.nowait.domain.waiting.dto.WaitingResponse;
 import com.nowait.domain.waiting.entity.Waiting;
 import com.nowait.domain.waiting.entity.WaitingCallLog;
 import com.nowait.domain.waiting.entity.WaitingSession;
+import com.nowait.domain.waiting.monitoring.WaitingMetrics;
 import com.nowait.domain.waiting.redis.WaitingRedisLuaExecutor;
 import com.nowait.domain.waiting.redis.WaitingTokenData;
 import com.nowait.domain.waiting.repository.WaitingCallLogRepository;
@@ -68,6 +69,7 @@ public class WaitingService {
   private final RestaurantHourRepository restaurantHourRepository;
   private final RestaurantHourService restaurantHourService;
   private final RestaurantService restaurantService;
+  private final WaitingMetrics waitingMetrics;
 
   /* ================== 사용자 ================== */
 
@@ -78,6 +80,7 @@ public class WaitingService {
   @Transactional
   public WaitingResponse register(Long restaurantId, Long loginUserId,
       WaitingRegisterRequest request) {
+    try {
 
     Restaurant restaurant = restaurantRepository.findById(restaurantId)
         .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
@@ -146,7 +149,17 @@ public class WaitingService {
       log.error("Waiting hash missing from Redis immediately after registration. token={}", result.token());
       throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
     }
-    return WaitingResponse.of(result.token(), data, 0L);
+    WaitingResponse response = WaitingResponse.of(result.token(), data, 0L);
+    waitingMetrics.registerSucceeded();
+    return response;
+
+    } catch (BusinessException e) {
+      waitingMetrics.registerRejected(e.getErrorCode());
+      throw e;
+    } catch (RuntimeException e) {
+      waitingMetrics.registerSystemFailed();
+      throw e;
+    }
   }
 
   /*
@@ -190,6 +203,7 @@ public class WaitingService {
    * GET /api/waitings/me
    */
   public List<WaitingResponse> getMyWaitings(Long loginUserId) {
+    waitingMetrics.pollingObserved();
     List<String> tokens = waitingRedis.findActiveTokensOf(loginUserId);
     if (tokens.isEmpty()) return List.of();
 

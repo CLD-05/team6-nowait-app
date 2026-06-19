@@ -37,6 +37,7 @@ import com.nowait.domain.slot.service.SlotService;
 import com.nowait.domain.user.entity.User;
 import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.common.TimeZones;
+import com.nowait.domain.reservation.monitoring.ReservationMetrics;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
 
@@ -71,6 +72,7 @@ public class ReservationService {
     // [새로 추가] 최하단 buildFromRedis에서 '캐시 자판기'를 경유하기 위해 추가로 주입합니다!
     private final RestaurantService restaurantService;
     private final SlotService slotService;
+    private final ReservationMetrics reservationMetrics;
 
     /* ================== 사용자 ================== */
 
@@ -79,6 +81,7 @@ public class ReservationService {
      * 검증은 DB, 생성은 Redis Lua. DB INSERT 는 Worker 가 비동기 처리.
      */
     public ReservationResponse createReservation(Long userId, ReservationCreateRequest request) {
+        try {
         Restaurant restaurant = restaurantRepository.findById(request.restaurantId())
             .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
 
@@ -146,7 +149,17 @@ public class ReservationService {
             log.error("Reservation hash missing from Redis immediately after creation. token={}", result.token());
             throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
-        return buildFromRedis(result.token(), data);
+        ReservationResponse response = buildFromRedis(result.token(), data);
+        reservationMetrics.created();
+        return response;
+
+        } catch (BusinessException e) {
+            reservationMetrics.rejected(e.getErrorCode());
+            throw e;
+        } catch (RuntimeException e) {
+            reservationMetrics.systemFailed();
+            throw e;
+        }
     }
 
     /*

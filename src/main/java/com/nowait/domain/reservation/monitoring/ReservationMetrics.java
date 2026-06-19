@@ -1,6 +1,8 @@
 package com.nowait.domain.reservation.monitoring;
 
 import com.nowait.domain.reservation.redis.ReservationRedisKeys;
+import com.nowait.global.exception.ErrorCode;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,15 @@ public class ReservationMetrics {
   private final MeterRegistry meterRegistry;
   private final StringRedisTemplate redis;
 
+  /*
+   * 예약 생성 결과 카운터 (nowait_* 네임스페이스):
+   *   nowait_reservation_success_total   예약 성공
+   *   nowait_reservation_failure_total   예약 시스템 실패 (INTERNAL_SERVER_ERROR / 예기치 못한 예외)
+   * 영업시간/정원/휴무일 등 정상적인 비즈니스 거절은 실패로 집계하지 않는다.
+   */
+  private Counter reservationSuccess;
+  private Counter reservationFailure;
+
   @PostConstruct
   void register() {
     meterRegistry.gauge("reservation.queue.pending", this,
@@ -39,7 +50,26 @@ public class ReservationMetrics {
     meterRegistry.gauge("reservation.noshow.candidates", this,
         m -> safeZCard(ReservationRedisKeys.NOSHOW_CANDIDATES));
 
-    log.info("ReservationMetrics registered: pending/processing/deadletter/noshow gauges");
+    reservationSuccess = meterRegistry.counter("nowait.reservation.success");
+    reservationFailure = meterRegistry.counter("nowait.reservation.failure");
+
+    log.info("ReservationMetrics registered: queue gauges + nowait reservation counters");
+  }
+
+  public void created() {
+    reservationSuccess.increment();
+  }
+
+  /* BusinessException 발생 시 — 시스템 오류만 실패로 집계 */
+  public void rejected(ErrorCode code) {
+    if (code == ErrorCode.INTERNAL_SERVER_ERROR) {
+      reservationFailure.increment();
+    }
+  }
+
+  /* 비즈니스 예외가 아닌 예기치 못한 시스템 실패 */
+  public void systemFailed() {
+    reservationFailure.increment();
   }
 
   private double safeLLen(String key) {
