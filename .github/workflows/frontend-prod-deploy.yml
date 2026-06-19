@@ -84,6 +84,11 @@ jobs:
             exit 1
           fi
 
+          if [ -z "${{ vars.PROD_CLOUDFRONT_DISTRIBUTION_ID }}" ]; then
+            echo "PROD_CLOUDFRONT_DISTRIBUTION_ID is empty."
+            exit 1
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -114,3 +119,11 @@ jobs:
           fi
 
           aws s3 sync "frontend/dist" "s3://${{ vars.PROD_FRONTEND_S3_BUCKET }}" --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          echo "Starting CloudFront Invalidation for ID: ${{ vars.PROD_CLOUDFRONT_DISTRIBUTION_ID }}"
+          
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.PROD_CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*"
