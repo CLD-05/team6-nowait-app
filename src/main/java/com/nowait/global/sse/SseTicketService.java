@@ -10,10 +10,11 @@ import java.time.Duration;
 import java.util.UUID;
 
 /*
- * SSE 연결용 단발 티켓 관리자.
+ * SSE 연결용 티켓 관리자.
  *
- * - JWT 헤더 인증된 사용자가 티켓 발급 요청 → UUID 발급 + Redis 저장(TTL 10초, 1회용)
- * - SSE 연결 시 ticket 쿼리파라미터로 전달 → consume() 으로 검증 + 즉시 폐기
+ * - JWT 헤더 인증된 사용자가 티켓 발급 요청 → UUID 발급 + Redis 저장(TTL 동안 유효)
+ * - SSE 연결 시 ticket 쿼리파라미터로 전달 → consume() 으로 검증
+ * - EventSource 자동 재연결을 허용하기 위해 TTL 내에서는 다회 사용 가능
  * - 쿼리스트링에 JWT 가 직접 노출되는 것을 방지하기 위한 임시 패스 역할
  */
 @Service
@@ -21,23 +22,21 @@ import java.util.UUID;
 public class SseTicketService {
 
   private static final String KEY_PREFIX = "sse:ticket:";
-  private static final Duration TTL = Duration.ofSeconds(30);
+  private static final Duration TTL = Duration.ofMinutes(30);
 
   private final StringRedisTemplate redisTemplate;
 
-  /* 티켓 발급 (1회용, 10초 만료) */
   public String issue(Long userId) {
     String ticket = UUID.randomUUID().toString();
     redisTemplate.opsForValue().set(KEY_PREFIX + ticket, String.valueOf(userId), TTL);
     return ticket;
   }
 
-  /* 티켓 검증 + 즉시 폐기. 유효하지 않으면 예외. */
   public Long consume(String ticket) {
     if (ticket == null || ticket.isBlank()) {
       throw new BusinessException(ErrorCode.INVALID_SSE_TICKET);
     }
-    String userId = redisTemplate.opsForValue().getAndDelete(KEY_PREFIX + ticket);
+    String userId = redisTemplate.opsForValue().get(KEY_PREFIX + ticket);
     if (userId == null) {
       throw new BusinessException(ErrorCode.INVALID_SSE_TICKET);
     }
