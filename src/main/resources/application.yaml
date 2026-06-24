@@ -83,6 +83,8 @@ management:
     readinessstate:
       enabled: true
   metrics:
+    enable:
+      tomcat: true
     distribution:
       # 기본값으로는 http_server_requests_seconds의 _count/_sum/_max만 노출되고
       # _bucket이 없어서 Grafana의 histogram_quantile(p95 레이턴시 패널)이 빈 값만
