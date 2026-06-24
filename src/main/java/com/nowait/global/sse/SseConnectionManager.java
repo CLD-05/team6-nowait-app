@@ -1,10 +1,12 @@
 package com.nowait.global.sse;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -69,6 +71,28 @@ public class SseConnectionManager {
   /* 현재 보관 중인 활성 커넥션 수 (모니터링용) */
   public int activeConnectionCount() {
     return connections.size();
+  }
+
+  /*
+   * ALB / 중간 프록시 idle timeout(보통 60s) 보다 짧은 주기로 ping 을 보내
+   * 커넥션이 끊기지 않도록 한다. comment 이벤트(`:` 로 시작)는 EventSource 가
+   * 무시하므로 프론트 핸들러에 영향 없음.
+   */
+  @Scheduled(fixedRate = 15_000L)
+  public void heartbeat() {
+    for (Map.Entry<Long, SseEmitter> entry : connections.entrySet()) {
+      Long userId = entry.getKey();
+      SseEmitter emitter = entry.getValue();
+      try {
+        emitter.send(SseEmitter.event().comment("ping"));
+      } catch (IOException e) {
+        log.debug("SSE heartbeat failed. userId={}, removing emitter.", userId);
+        remove(userId, emitter);
+      } catch (Exception e) {
+        log.warn("Unexpected SSE heartbeat error. userId={}", userId, e);
+        remove(userId, emitter);
+      }
+    }
   }
 
   private void remove(Long userId, SseEmitter target) {

@@ -29,6 +29,13 @@ spring:
     init:
       mode: ${SQL_INIT_MODE:never}
 
+  mvc:
+    async:
+      # SseEmitter timeout 을 30분으로 만들어도 Spring MVC async 전역 기본값(약 30s)이
+      # 먼저 깨어나 AsyncRequestTimeoutException 으로 SSE 가 강제 종료됐다.
+      # 전역 async timeout 도 30분으로 늘려 emitter timeout 과 일치시킨다.
+      request-timeout: ${SPRING_MVC_ASYNC_REQUEST_TIMEOUT_MS:1800000}
+
   data:
     redis:
       host: ${REDIS_HOST:localhost}

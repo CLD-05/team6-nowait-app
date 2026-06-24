@@ -2,6 +2,7 @@ package com.nowait.global.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -21,6 +22,11 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ErrorResponse> handleBusiness(BusinessException e, HttpServletRequest request) {
     log.warn("BusinessException: {}", e.getMessage());
     ErrorCode code = e.getErrorCode();
+    if (isSseRequest(request)) {
+      // text/event-stream 응답에는 ErrorResponse(JSON) 컨버터가 없어 직렬화하면
+      // HttpMessageNotWritableException 으로 다시 터진다. 본문 없이 상태만 돌려준다.
+      return ResponseEntity.status(code.getStatus()).build();
+    }
     return ResponseEntity.status(code.getStatus())
         .body(ErrorResponse.of(code, request.getRequestURI()));
   }
@@ -64,7 +70,15 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(Exception.class)
   public ResponseEntity<ErrorResponse> handleAll(Exception e, HttpServletRequest request) {
     log.error("Unhandled exception", e);
+    if (isSseRequest(request)) {
+      return ResponseEntity.status(ErrorCode.INTERNAL_SERVER_ERROR.getStatus()).build();
+    }
     return ResponseEntity.status(ErrorCode.INTERNAL_SERVER_ERROR.getStatus())
         .body(ErrorResponse.of(ErrorCode.INTERNAL_SERVER_ERROR, request.getRequestURI()));
+  }
+
+  private boolean isSseRequest(HttpServletRequest request) {
+    String accept = request.getHeader("Accept");
+    return accept != null && accept.contains(MediaType.TEXT_EVENT_STREAM_VALUE);
   }
 }
