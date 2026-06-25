@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1080" viewBox="0 0 1800 1080" role="img" aria-labelledby="title desc">
+  <title id="title">Simple Nowait logo concepts</title>
+  <desc id="desc">Six simple Nowait wordmark concepts matching the current cream, tomato, amber, and ink website style.</desc>
+  <defs>
+    <linearGradient id="warm" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff5a3c" />
+      <stop offset="1" stop-color="#ffb22e" />
+    </linearGradient>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="124%">
+      <feDropShadow dx="7" dy="7" stdDeviation="0" flood-color="#231a14" flood-opacity="1" />
+    </filter>
+    <filter id="softShadow" x="-8%" y="-8%" width="116%" height="124%">
+      <feDropShadow dx="4" dy="4" stdDeviation="0" flood-color="#231a14" flood-opacity="1" />
+    </filter>
+    <style>
+      .bg { fill: #fff6ef; }
+      .card { fill: #fff; }
+      .ink { fill: #231a14; }
+      .muted { fill: #7d6f63; }
+      .cream { fill: #fff6ef; }
+      .tomato { fill: #ff5a3c; }
+      .amber { fill: #ffb22e; }
+      .white { fill: #fff; }
+      .line { stroke: #231a14; stroke-width: 6; stroke-linejoin: round; stroke-linecap: round; }
+      .thin { stroke: #231a14; stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
+      .title { font: 900 58px Arial, Helvetica, sans-serif; letter-spacing: -2.5px; }
+      .subtitle { font: 700 22px Arial, Helvetica, sans-serif; }
+      .label { font: 900 22px Arial, Helvetica, sans-serif; }
+      .logo { font: 900 88px Arial, Helvetica, sans-serif; letter-spacing: -5.8px; }
+      .logoSmall { font: 900 78px Arial, Helvetica, sans-serif; letter-spacing: -5px; }
+      .micro { font: 900 14px Arial, Helvetica, sans-serif; letter-spacing: 1.4px; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1800" height="1080" />
+  <circle cx="84" cy="92" r="28" class="amber line" />
+  <circle cx="1682" cy="956" r="24" class="tomato line" />
+  <rect x="1592" y="74" width="46" height="46" rx="13" fill="#16b886" class="line" transform="rotate(9 1615 97)" />
+
+  <text x="120" y="96" class="title ink">Simple Nowait logo concepts</text>
+  <text x="124" y="134" class="subtitle muted">Reduced wordmarks only. Built to fit the current landing/header style without feeling noisy.</text>
+
+  <g transform="translate(100 210)">
+    <rect width="500" height="320" rx="24" class="card line" filter="url(#shadow)" />
+    <text x="34" y="50" class="label ink">01 Clean Wordmark</text>
+    <g transform="translate(58 132)">
+      <text x="0" y="82" class="logo ink">Nowait</text>
+      <circle cx="280" cy="14" r="13" class="tomato line" />
+      <path d="M18 112 C116 132 258 130 382 104" fill="none" stroke="url(#warm)" stroke-width="15" stroke-linecap="round" />
+    </g>
+  </g>
+
+  <g transform="translate(650 210)">
+    <rect width="500" height="320" rx="24" class="card line" filter="url(#shadow)" />
+    <text x="34" y="50" class="label ink">02 Soft Highlight</text>
+    <g transform="translate(56 126)">
+      <rect x="178" y="8" width="210" height="92" rx="46" fill="#ffe6df" class="thin" />
+      <text x="0" y="82" class="logo ink">Nowait</text>
+      <path d="M210 106 C264 116 332 112 386 98" fill="none" stroke="#ffb22e" stroke-width="10" stroke-linecap="round" />
+    </g>
+  </g>
+
+  <g transform="translate(1200 210)">
+    <rect width="500" height="320" rx="24" class="card line" filter="url(#shadow)" />
+    <text x="34" y="50" class="label ink">03 Tomato Dot</text>
+    <g transform="translate(58 132)">
+      <text x="0" y="82" class="logo ink">Nowait</text>
+      <circle cx="280" cy="14" r="17" class="tomato line" filter="url(#softShadow)" />
+      <circle cx="280" cy="14" r="7" class="cream" />
+    </g>
+  </g>
+
+  <g transform="translate(100 590)">
+    <rect width="500" height="320" rx="24" class="card line" filter="url(#shadow)" />
+    <text x="34" y="50" class="label ink">04 Warm Capsule</text>
+    <g transform="translate(48 120)">
+      <rect x="0" y="0" width="404" height="112" rx="56" fill="url(#warm)" class="line" filter="url(#softShadow)" />
+      <text x="202" y="78" text-anchor="middle" class="logoSmall white">Nowait</text>
+    </g>
+  </g>
+
+  <g transform="translate(650 590)">
+    <rect width="500" height="320" rx="24" class="card line" filter="url(#shadow)" />
+    <text x="34" y="50" class="label ink">05 Split Accent</text>
+    <g transform="translate(58 132)">
+      <text x="0" y="82" class="logo ink">No</text>
+      <text x="126" y="82" class="logo tomato">wait</text>
+      <rect x="276" y="98" width="90" height="28" rx="14" class="amber thin" />
+      <text x="321" y="118" text-anchor="middle" class="micro ink">FAST</text>
+    </g>
+  </g>
+
+  <g transform="translate(1200 590)">
+    <rect width="500" height="320" rx="24" class="card line" filter="url(#shadow)" />
+    <text x="34" y="50" class="label ink">06 Header Badge</text>
+    <g transform="translate(54 120)">
+      <rect x="0" y="0" width="392" height="112" rx="28" class="cream line" filter="url(#softShadow)" />
+      <rect x="0" y="0" width="96" height="112" rx="28" class="tomato" />
+      <path d="M78 0 H96 V112 H78 Z" class="tomato" />
+      <text x="210" y="78" text-anchor="middle" class="logoSmall ink">Nowait</text>
+      <circle cx="344" cy="28" r="12" class="amber thin" />
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Nowait blended logo preview</title>
+  <desc id="desc">Preview of the Nowait blended tomato and amber wordmark in landing and header contexts.</desc>
+  <defs>
+    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="8" dy="8" stdDeviation="0" flood-color="#231a14" flood-opacity="1" />
+    </filter>
+    <style>
+      .bg { fill: #fff6ef; }
+      .card { fill: #fff; }
+      .ink { fill: #231a14; }
+      .muted { fill: #7d6f63; }
+      .tomato { fill: #ff5a3c; }
+      .amber { fill: #ffb22e; }
+      .mint { fill: #16b886; }
+      .line { stroke: #231a14; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+      .title { font: 900 54px Arial, Helvetica, sans-serif; letter-spacing: -2px; }
+      .desc { font: 700 20px Arial, Helvetica, sans-serif; }
+      .label { font: 900 22px Arial, Helvetica, sans-serif; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="900" />
+  <circle cx="88" cy="112" r="32" class="amber line" />
+  <rect x="1438" y="88" width="52" height="52" rx="14" class="mint line" transform="rotate(10 1464 114)" />
+  <circle cx="1510" cy="772" r="24" class="tomato line" />
+
+  <text x="104" y="108" class="title ink">Nowait blended logo</text>
+  <text x="108" y="146" class="desc muted">Stamp direction removed. Tomato and amber are mixed as a warm, energetic wordmark.</text>
+
+  <g transform="translate(130 246)">
+    <rect x="0" y="0" width="1340" height="360" rx="30" class="card line" filter="url(#cardShadow)" />
+    <text x="46" y="64" class="label ink">Primary wordmark</text>
+    <image x="286" y="82" width="760" height="220" href="nowait-logo-blend.png" preserveAspectRatio="xMidYMid meet" />
+  </g>
+
+  <g transform="translate(130 660)">
+    <rect x="0" y="0" width="640" height="110" rx="24" class="card line" filter="url(#cardShadow)" />
+    <text x="34" y="44" class="label ink">Header size</text>
+    <image x="330" y="17" width="260" height="75" href="nowait-logo-blend.png" preserveAspectRatio="xMidYMid meet" />
+  </g>
+
+  <g transform="translate(830 660)">
+    <rect x="0" y="0" width="640" height="110" rx="24" class="tomato line" filter="url(#cardShadow)" />
+    <text x="34" y="44" class="label" fill="#fff">On tomato CTA</text>
+    <image x="330" y="17" width="260" height="75" href="nowait-logo-blend.png" preserveAspectRatio="xMidYMid meet" />
+  </g>
+</svg>
