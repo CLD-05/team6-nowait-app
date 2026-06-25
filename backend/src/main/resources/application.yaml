@@ -91,6 +91,14 @@ management:
       # 반환했다. 히스토그램 버킷을 켜야 Prometheus 쪽에서 분위수 계산이 가능하다.
       percentiles-histogram:
         http.server.requests: true
+        # DB 커넥션 획득 대기 p99(부하테스트 SLO ≤50ms) 측정용.
+        # HikariCP acquire는 기본적으로 _count/_sum/_max만 노출돼 진짜 분위수를 못 구한다.
+        # 히스토그램 버킷을 켜면 hikaricp_connections_acquire_seconds_bucket(le)가 생겨
+        # 여러 파드에 걸쳐 histogram_quantile(0.99, ...)로 p99 산출이 가능해진다.
+        hikaricp.connections.acquire: true
+      # 50ms 임계 부근 해상도를 높이기 위한 SLO 경계 버킷 추가
+      slo:
+        hikaricp.connections.acquire: 10ms, 25ms, 50ms, 100ms
 
 logging:
   level:
