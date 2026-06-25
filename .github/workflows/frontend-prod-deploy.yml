@@ -1,13 +1,10 @@
 name: Frontend Prod Deploy
 
+# prod 배포는 "수동" 원칙을 따른다. dev 프론트는 로컬에서만 동작하여
+# 별도 dev 배포가 없으므로, push 자동 트리거를 두면 frontend/** 변경이
+# 곧바로 prod로 직행해 원칙과 충돌한다. 따라서 workflow_dispatch 전용으로 둔다.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-prod-deploy.yml"
 
 permissions:
   id-token: write

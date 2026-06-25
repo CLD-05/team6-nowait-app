@@ -1,0 +1,79 @@
+name: Frontend CI
+
+# 모든 PR에서 실행하되, 실제 lint/build는 frontend/** 변경이 있을 때만 수행한다.
+# backend-ci와 동일한 이유로 dorny/paths-filter 게이트 + 결과 잡 패턴을 사용한다.
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect frontend changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Path filter
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/frontend-ci.yml'
+
+  frontend-build:
+    name: Frontend lint and build
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Build check
+        env:
+          VITE_API_BASE_URL: http://localhost:8080
+        run: npm run build
+
+  # 브랜치 보호의 required status check로 지정할 잡.
+  frontend-ci:
+    name: Frontend CI result
+    needs:
+      - changes
+      - frontend-build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate result
+        run: |
+          result="${{ needs.frontend-build.result }}"
+          echo "frontend-build result: ${result}"
+          if [ "${result}" = "failure" ] || [ "${result}" = "cancelled" ]; then
+            echo "Frontend build failed."
+            exit 1
+          fi
+          echo "Frontend CI passed (or skipped due to no frontend changes)."
