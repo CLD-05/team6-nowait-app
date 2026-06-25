@@ -1,0 +1,183 @@
+package com.nowait.domain.waiting.monitoring;
+
+import com.nowait.domain.waiting.redis.WaitingRedisKeys;
+import com.nowait.domain.waiting.redis.WaitingRedisLuaExecutor;
+import com.nowait.global.exception.ErrorCode;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import jakarta.annotation.PostConstruct;
+import java.time.Duration;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Component;
+
+/*
+ * 웨이팅 도메인 메트릭을 Micrometer 에 등록 (ReservationMetrics와 동일한 패턴).
+ *
+ * (1) 큐/대기 gauge — scrape 시점에 Redis 조회:
+ *   waiting_queue_pending / waiting_queue_processing / waiting_queue_deadletter
+ *   waiting_active_sessions
+ *
+ * (2) Grafana "NoWait 핵심 운영 대시보드" 비즈니스/Worker 지표 (nowait_* 네임스페이스):
+ *   nowait_waiting_register_success_total   대기 등록 성공
+ *   nowait_waiting_register_failure_total   대기 등록 시스템 실패 (성공률 SLI 분모)
+ *   nowait_capacity_full_total              수용 인원 초과 (정상 비즈니스 결과 — 실패 아님)
+ *   nowait_duplicate_waiting_attempt_total  중복 대기 시도 (정상 비즈니스 결과 — 실패 아님)
+ *   nowait_polling_requests_total           폴링 요청량
+ *   nowait_worker_persist_success_total     Worker DB 저장 성공
+ *   nowait_worker_persist_failure_total     Worker DB 저장 실패
+ *   nowait_worker_persist_lag_seconds       Redis→DB 저장 지연 (histogram)
+ *   nowait_worker_dlq_in_total              Dead Letter 유입량
+ *   nowait_waiting_active_count             현재 대기 중 사용자 수 (gauge)
+ *
+ * 설계 메모:
+ *   - 수용 초과/중복 시도는 "정상적인 비즈니스 결과"이므로 register_failure 로 집계하지 않는다.
+ *     register_failure 는 INTERNAL_SERVER_ERROR / 예기치 못한 예외(예: Redis 장애)만 센다.
+ *     → 대기 등록 성공률(P0 알림)이 "만석"이나 "중복 탭" 같은 정상 상황에 떨어지지 않게 한다.
+ *   - 카운터는 API/Worker Pod 양쪽에 존재하나 이벤트 발생 측에서만 증가한다.
+ *   - gauge 는 모든 Pod 가 동일 Redis 를 보므로 PromQL 에서 max() 로 집계한다.
+ */
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class WaitingMetrics {
+
+  private final MeterRegistry meterRegistry;
+  private final StringRedisTemplate redis;
+  private final WaitingRedisLuaExecutor waitingRedis;
+
+  private Counter registerSuccess;
+  private Counter registerFailure;
+  private Counter capacityFull;
+  private Counter duplicateAttempt;
+  private Counter polling;
+  private Counter workerPersistSuccess;
+  private Counter workerPersistFailure;
+  private Counter dlqIn;
+  private Timer persistLag;
+
+  @PostConstruct
+  void register() {
+    // (1) 기존 큐/세션 gauge
+    meterRegistry.gauge("waiting.queue.pending", this,
+        m -> m.safeLLen(WaitingRedisKeys.PENDING_SYNC));
+    meterRegistry.gauge("waiting.queue.processing", this,
+        m -> m.safeLLen(WaitingRedisKeys.PROCESSING));
+    meterRegistry.gauge("waiting.queue.deadletter", this,
+        m -> m.safeLLen(WaitingRedisKeys.DEAD_LETTER));
+    meterRegistry.gauge("waiting.active.sessions", this,
+        m -> m.safeSCard(WaitingRedisKeys.ACTIVE_SESSIONS));
+
+    // (2) nowait_* 비즈니스/Worker 카운터·타이머
+    registerSuccess = meterRegistry.counter("nowait.waiting.register.success");
+    registerFailure = meterRegistry.counter("nowait.waiting.register.failure");
+    capacityFull = meterRegistry.counter("nowait.capacity.full");
+    duplicateAttempt = meterRegistry.counter("nowait.duplicate.waiting.attempt");
+    polling = meterRegistry.counter("nowait.polling.requests");
+    workerPersistSuccess = meterRegistry.counter("nowait.worker.persist.success");
+    workerPersistFailure = meterRegistry.counter("nowait.worker.persist.failure");
+    dlqIn = meterRegistry.counter("nowait.worker.dlq.in");
+    persistLag = Timer.builder("nowait.worker.persist.lag")
+        .description("Redis->DB 비동기 저장 지연")
+        .publishPercentileHistogram()
+        .register(meterRegistry);
+
+    // 현재 대기 중 사용자 수 = 활성 세션들의 count 합
+    meterRegistry.gauge("nowait.waiting.active.count", this,
+        WaitingMetrics::safeActiveWaitingCount);
+
+    log.info("WaitingMetrics registered: queue gauges + nowait business/worker counters");
+  }
+
+  /* ===== 대기 등록 (API) ===== */
+
+  public void registerSucceeded() {
+    registerSuccess.increment();
+  }
+
+  /*
+   * BusinessException 발생 시 호출. ErrorCode 별로 적절한 카운터에 분배한다.
+   * 수용 초과/중복은 정상 비즈니스 결과 → 실패 카운터 증가 X.
+   */
+  public void registerRejected(ErrorCode code) {
+    if (code == ErrorCode.WAITING_COUNT_EXCEEDED) {
+      capacityFull.increment();
+    } else if (code == ErrorCode.DUPLICATE_WAITING) {
+      duplicateAttempt.increment();
+    } else if (code == ErrorCode.INTERNAL_SERVER_ERROR) {
+      registerFailure.increment();
+    }
+    // 그 외(영업시간/휴무일/미오픈 등)는 정상적인 비즈니스 거절 → 집계하지 않음
+  }
+
+  /* 비즈니스 예외가 아닌 예기치 못한 시스템 실패 (Redis 장애 등) */
+  public void registerSystemFailed() {
+    registerFailure.increment();
+  }
+
+  /* ===== 폴링 (API) ===== */
+
+  public void pollingObserved() {
+    polling.increment();
+  }
+
+  /* ===== Worker (waiting-worker Pod) ===== */
+
+  /* 저장 성공 — registeredAt(epoch millis) 로 Redis→DB 지연을 기록 */
+  public void persistSucceeded(long registeredAtMillis) {
+    workerPersistSuccess.increment();
+    if (registeredAtMillis > 0) {
+      long lagMillis = System.currentTimeMillis() - registeredAtMillis;
+      if (lagMillis >= 0) {
+        persistLag.record(Duration.ofMillis(lagMillis));
+      }
+    }
+  }
+
+  public void persistFailed() {
+    workerPersistFailure.increment();
+  }
+
+  public void deadLettered() {
+    dlqIn.increment();
+  }
+
+  /* ===== gauge 헬퍼 ===== */
+
+  private double safeLLen(String key) {
+    try {
+      Long size = redis.opsForList().size(key);
+      return size == null ? 0.0 : size.doubleValue();
+    } catch (Exception e) {
+      log.warn("Failed to read LLEN {} for metric: {}", key, e.getMessage());
+      return Double.NaN;
+    }
+  }
+
+  private double safeSCard(String key) {
+    try {
+      Long size = redis.opsForSet().size(key);
+      return size == null ? 0.0 : size.doubleValue();
+    } catch (Exception e) {
+      log.warn("Failed to read SCARD {} for metric: {}", key, e.getMessage());
+      return Double.NaN;
+    }
+  }
+
+  private double safeActiveWaitingCount() {
+    try {
+      List<Long> sessionIds = waitingRedis.listActiveSessionIds();
+      double total = 0.0;
+      for (Long sessionId : sessionIds) {
+        total += waitingRedis.getCount(sessionId);
+      }
+      return total;
+    } catch (Exception e) {
+      log.warn("Failed to compute active waiting count for metric: {}", e.getMessage());
+      return Double.NaN;
+    }
+  }
+}

@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="220" viewBox="0 0 760 220" role="img" aria-labelledby="title desc">
+  <title id="title">Nowait blended tomato and amber logo</title>
+  <desc id="desc">A Nowait wordmark using tomato and amber accents with a bold playful food-service style.</desc>
+  <defs>
+    <linearGradient id="waitGlow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff5a3c" />
+      <stop offset="0.54" stop-color="#ff7a37" />
+      <stop offset="1" stop-color="#ffb22e" />
+    </linearGradient>
+    <linearGradient id="swoosh" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff5a3c" />
+      <stop offset="0.72" stop-color="#ff8f34" />
+      <stop offset="1" stop-color="#ffb22e" />
+    </linearGradient>
+    <filter id="hardShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="8" dy="8" stdDeviation="0" flood-color="#231a14" flood-opacity="1" />
+    </filter>
+    <style>
+      .ink { fill: #231a14; }
+      .cream { fill: #fff6ef; }
+      .tomato { fill: #ff5a3c; }
+      .amber { fill: #ffb22e; }
+      .line { stroke: #231a14; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+      .thinLine { stroke: #231a14; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+      .word { font: 900 122px Arial, Helvetica, sans-serif; letter-spacing: -7px; }
+      .micro { font: 900 17px Arial, Helvetica, sans-serif; letter-spacing: 1.8px; }
+    </style>
+  </defs>
+
+  <g id="logo" transform="translate(20 22)">
+    <path
+      d="M268 42 C318 28 438 23 559 34 C622 40 674 50 700 69 C716 81 716 121 698 134 C668 156 571 158 473 151 C389 145 310 133 267 116 C247 108 247 49 268 42 Z"
+      fill="url(#waitGlow)"
+      class="line"
+      filter="url(#hardShadow)"
+    />
+    <path
+      d="M84 162 C206 191 411 185 642 151"
+      fill="none"
+      stroke="url(#swoosh)"
+      stroke-width="22"
+      stroke-linecap="round"
+    />
+    <path
+      d="M266 173 C359 186 490 180 642 155"
+      fill="none"
+      stroke="#231a14"
+      stroke-width="5"
+      stroke-linecap="round"
+      opacity="0.22"
+    />
+    <text x="40" y="132" class="word ink">Nowait</text>
+    <circle cx="555" cy="38" r="17" class="cream line" />
+    <circle cx="555" cy="38" r="8" class="tomato" />
+    <g transform="translate(54 18) rotate(-5)">
+      <rect x="0" y="0" width="156" height="38" rx="19" class="amber thinLine" />
+      <text x="78" y="25" text-anchor="middle" class="micro ink">NO LINE</text>
+    </g>
+  </g>
+</svg>

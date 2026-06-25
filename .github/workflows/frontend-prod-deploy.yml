@@ -1,0 +1,126 @@
+name: Frontend Prod Deploy
+
+# prod 배포는 "수동" 원칙을 따른다. dev 프론트는 로컬에서만 동작하여
+# 별도 dev 배포가 없으므로, push 자동 트리거를 두면 frontend/** 변경이
+# 곧바로 prod로 직행해 원칙과 충돌한다. 따라서 workflow_dispatch 전용으로 둔다.
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  FRONTEND_DIR: "frontend"
+  AWS_REGION: ${{ vars.AWS_REGION }}
+
+concurrency:
+  group: frontend-prod-deploy
+  cancel-in-progress: false
+
+jobs:
+  frontend-lint-and-build-check:
+    name: 1. Frontend lint and build check
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ${{ env.FRONTEND_DIR }}
+
+    steps:
+      - name: Checkout app repository
+        uses: actions/checkout@v4
+
+      - name: Check frontend package
+        run: |
+          test -f package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run frontend lint
+        run: npm run lint
+
+      - name: Build check
+        env:
+          VITE_API_BASE_URL: http://localhost:8080
+        run: npm run build
+
+  build-and-deploy-frontend-prod:
+    name: 2. Build and deploy frontend to prod S3
+    runs-on: ubuntu-latest
+    needs:
+      - frontend-lint-and-build-check
+
+    environment: production
+
+    defaults:
+      run:
+        working-directory: ${{ env.FRONTEND_DIR }}
+
+    steps:
+      - name: Checkout app repository
+        uses: actions/checkout@v4
+
+      - name: Check production variables
+        run: |
+          if [ -z "${{ vars.PROD_API_BASE_URL }}" ]; then
+            echo "PROD_API_BASE_URL is empty."
+            exit 1
+          fi
+
+          if [ -z "${{ vars.PROD_FRONTEND_S3_BUCKET }}" ]; then
+            echo "PROD_FRONTEND_S3_BUCKET is empty."
+            exit 1
+          fi
+
+          if [ -z "${{ vars.PROD_CLOUDFRONT_DISTRIBUTION_ID }}" ]; then
+            echo "PROD_CLOUDFRONT_DISTRIBUTION_ID is empty."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vite frontend for production
+        env:
+          VITE_API_BASE_URL: ${{ vars.PROD_API_BASE_URL }}
+        run: npm run build
+
+      - name: Configure AWS credentials for prod
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PROD_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload frontend dist to prod S3
+        working-directory: .
+        run: |
+          if [ ! -d "frontend/dist" ]; then
+            echo "Vite build output not found: frontend/dist"
+            exit 1
+          fi
+
+          aws s3 sync "frontend/dist" "s3://${{ vars.PROD_FRONTEND_S3_BUCKET }}" --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          echo "Starting CloudFront Invalidation for ID: ${{ vars.PROD_CLOUDFRONT_DISTRIBUTION_ID }}"
+          
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.PROD_CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*"

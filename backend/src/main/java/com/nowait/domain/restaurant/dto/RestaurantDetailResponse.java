@@ -1,0 +1,49 @@
+package com.nowait.domain.restaurant.dto;
+
+import java.time.LocalTime;
+
+import com.nowait.domain.restaurant.entity.Restaurant;
+import com.nowait.domain.restaurant.type.RestaurantCategory;
+import com.nowait.domain.restaurant.type.RestaurantStatus;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+@Getter
+@AllArgsConstructor
+public class RestaurantDetailResponse {
+	
+	private Long id;
+	private String name;
+	private RestaurantCategory category;
+	private String address;
+	private String phoneNumber;
+	private String description;
+	private String imageUrl;
+	private String mainMenuName;
+	private String parkingAvailable;
+	private String wifiAvailable;
+	private String multilingualMenuAvailable;
+	private RestaurantStatus status;
+	private String reservationAvailable;
+	private String waitingAvailable;
+	
+	public static RestaurantDetailResponse from(Restaurant restaurant, String imageUrl) {
+		return new RestaurantDetailResponse(
+				restaurant.getId(),
+				restaurant.getName(),
+				restaurant.getCategory(),
+				restaurant.getAddress(),
+				restaurant.getPhoneNumber(),
+				restaurant.getDescription(),
+				imageUrl,
+				restaurant.getMainMenuName(),
+				restaurant.getParkingAvailable(),
+				restaurant.getWifiAvailable(),
+				restaurant.getMultilingualMenuAvailable(),
+				restaurant.getStatus(),
+				restaurant.getReservationAvailable(),
+				restaurant.getWaitingAvailable()
+		);
+	}
+}
