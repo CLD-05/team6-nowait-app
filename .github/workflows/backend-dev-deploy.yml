@@ -3,15 +3,18 @@ name: Backend Dev Deploy
 on:
   push:
     branches:
-      - develop
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-dev-deploy.yml"
   workflow_dispatch:
 
-permissions: 
+permissions:
   id-token: write
   contents: read
 
 env:
-  BACKEND_DIR: "."
+  BACKEND_DIR: "backend"
   AWS_REGION: ${{ vars.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
   ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}

@@ -1,0 +1,83 @@
+name: Backend CI
+
+# 모든 PR에서 실행하되, 실제 테스트는 backend/** 변경이 있을 때만 수행한다.
+# (paths: 트리거를 직접 걸면 frontend-only PR에서 required check가
+#  영원히 pending 상태로 남아 머지를 막는 함정이 있으므로,
+#  dorny/paths-filter 게이트 + 항상 실행되는 결과 잡으로 우회한다.)
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect backend changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Path filter
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/backend-ci.yml'
+
+  backend-test:
+    name: Backend test
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Run Maven tests
+        run: |
+          if [ -f "./mvnw" ]; then
+            chmod +x ./mvnw
+            ./mvnw -B clean test
+          elif [ -f "pom.xml" ]; then
+            mvn -B clean test
+          else
+            echo "No Maven wrapper or pom.xml found."
+            exit 1
+          fi
+
+  # 브랜치 보호의 required status check로 지정할 잡.
+  # backend-test가 skip(변경 없음)이면 통과, fail/cancel이면 실패시킨다.
+  backend-ci:
+    name: Backend CI result
+    needs:
+      - changes
+      - backend-test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate result
+        run: |
+          result="${{ needs.backend-test.result }}"
+          echo "backend-test result: ${result}"
+          if [ "${result}" = "failure" ] || [ "${result}" = "cancelled" ]; then
+            echo "Backend tests failed."
+            exit 1
+          fi
+          echo "Backend CI passed (or skipped due to no backend changes)."
