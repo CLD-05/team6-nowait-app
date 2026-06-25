@@ -2,7 +2,7 @@ server:
   port: ${SERVER_PORT:8080}
   tomcat:
     mbeanregistry:
-      enable: true
+      enabled: true
 
 spring:
   application:
