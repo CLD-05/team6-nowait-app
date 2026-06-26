@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import Logo from './Logo';
+import { API_BASE } from '../lib/api';
 
 type StoredUser = {
   role?: 'USER' | 'OWNER';
@@ -16,13 +17,16 @@ function readUser(): StoredUser {
 export default function Header() {
   const navigate = useNavigate();
   const location = useLocation();
-  const token = localStorage.getItem('nowait_token');
   const user = readUser();
-  const isLoggedIn = Boolean(token);
+  const isLoggedIn = Boolean(localStorage.getItem('nowait_user'));
   const isOwner = user.role === 'OWNER';
 
-  const handleLogout = () => {
-    localStorage.removeItem('nowait_token');
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
+    } catch {
+      // 쿠키 삭제는 서버 응답 실패해도 클라 상태는 정리한다.
+    }
     localStorage.removeItem('nowait_user');
     navigate('/');
     window.location.reload();

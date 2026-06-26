@@ -135,8 +135,7 @@ export default function OwnerPage() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem('nowait_token');
-    if (!token) { navigate('/auth'); return; }
+    if (!localStorage.getItem('nowait_user')) { navigate('/auth'); return; }
 
     async function init() {
       setRestaurantLoading(true);

@@ -89,9 +89,7 @@ export default function WaitingStatusPage() {
 
   // 최초 로드 + 적응형 polling fallback (앞에 남은 팀이 줄어들수록 더 자주 갱신)
 useEffect(() => {
-  const token = localStorage.getItem('nowait_token');
-
-  if (!token) {
+  if (!localStorage.getItem('nowait_user')) {
     navigate('/auth');
     return;
   }
@@ -120,8 +118,7 @@ useEffect(() => {
 
   // SSE 연결 — 웨이팅 상태 변경 시 서버가 push, 폴링 없이 즉시 갱신
   useEffect(() => {
-    const token = localStorage.getItem('nowait_token');
-    if (!token) return;
+    if (!localStorage.getItem('nowait_user')) return;
 
     let es: EventSource | null = null;
 
@@ -129,7 +126,7 @@ useEffect(() => {
       try {
         const res = await fetch(`${API_BASE}/notifications/stream/ticket`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
         });
         if (!res.ok) return;
         const { ticket } = await res.json() as { ticket: string };

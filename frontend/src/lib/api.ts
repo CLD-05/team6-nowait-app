@@ -33,10 +33,6 @@ export function resolveImageUrl(imageUrl?: string | null, fallback = '/favicon.s
   return `${IMAGE_BASE}/${imageUrl.replace(/^\/+/, '')}`;
 }
 
-function getToken(): string | null {
-  return localStorage.getItem('nowait_token');
-}
-
 function normalizePath(path: string): string {
   return path.startsWith('/') ? path : `/${path}`;
 }
@@ -55,21 +51,18 @@ export async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const token = getToken();
-
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...((options.headers as Record<string, string>) || {}),
   };
 
   const res = await fetch(`${API_BASE}${normalizePath(path)}`, {
+    credentials: 'include',
     ...options,
     headers,
   });
 
   if (res.status === 401) {
-    localStorage.removeItem('nowait_token');
     localStorage.removeItem('nowait_user');
     window.location.href = '/auth';
     throw new ApiError(401, '인증이 만료됐어요. 다시 로그인해주세요.');

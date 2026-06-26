@@ -91,8 +91,7 @@ public class SecurityConfig {
                 .toList());
 
         config.setAllowedMethods(List.of("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
-        config.setExposedHeaders(List.of("Authorization"));
+        config.setAllowedHeaders(List.of("Content-Type"));
         config.setAllowCredentials(true);
         config.setMaxAge(Duration.ofHours(1)); // preflight 캐시
 

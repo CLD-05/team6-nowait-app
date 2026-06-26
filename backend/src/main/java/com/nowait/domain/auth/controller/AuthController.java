@@ -19,7 +19,6 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -29,7 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
   private static final String REFRESH_COOKIE = "refreshToken";
-  private static final String COOKIE_PATH = "/api/v1/auth";
+  private static final String REFRESH_COOKIE_PATH = "/api/v1/auth";
+  private static final String ACCESS_COOKIE = "accessToken";
+  private static final String ACCESS_COOKIE_PATH = "/";
 
   private final AuthService authService;
   private final JwtTokenProvider jwtTokenProvider;
@@ -39,6 +40,9 @@ public class AuthController {
 
   @Value("${cookie.same-site}")
   private String cookieSameSite;
+
+  @Value("${cookie.domain:}")
+  private String cookieDomain;
 
   @PostMapping("/signup")
   public ResponseEntity<Void> signUp(@Valid @RequestBody SignUpRequest request) {
@@ -56,6 +60,8 @@ public class AuthController {
   public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
     LoginResult result = authService.login(request);
     return ResponseEntity.ok()
+        .header(HttpHeaders.SET_COOKIE, buildAccessCookie(result.body().accessToken(),
+            jwtTokenProvider.getAccessTokenValiditySeconds()).toString())
         .header(HttpHeaders.SET_COOKIE, buildRefreshCookie(result.refreshToken(),
             jwtTokenProvider.getRefreshTokenValiditySeconds()).toString())
         .body(result.body());
@@ -67,7 +73,7 @@ public class AuthController {
    */
   @PostMapping("/refresh")
   public ResponseEntity<TokenResponse> refresh(HttpServletRequest request) {
-    String refreshToken = readRefreshCookie(request);
+    String refreshToken = readCookie(request, REFRESH_COOKIE);
     RefreshResult result = authService.refresh(refreshToken);
 
     Long userId = jwtTokenProvider.getUserId(result.accessToken());
@@ -78,54 +84,61 @@ public class AuthController {
         result.accessToken(), userId, email, null, jwtTokenProvider.getRole(result.accessToken()));
 
     return ResponseEntity.ok()
+        .header(HttpHeaders.SET_COOKIE, buildAccessCookie(result.accessToken(),
+            jwtTokenProvider.getAccessTokenValiditySeconds()).toString())
         .header(HttpHeaders.SET_COOKIE, buildRefreshCookie(result.refreshToken(),
             jwtTokenProvider.getRefreshTokenValiditySeconds()).toString())
         .body(body);
   }
 
   /**
-   * 로그아웃. Access(헤더)는 블랙리스트, Refresh(쿠키)는 Redis 삭제 + 쿠키 만료.
+   * 로그아웃. Access/Refresh 둘 다 쿠키에서 읽어 블랙리스트/Redis 삭제 + 쿠키 만료.
    */
   @PostMapping("/logout")
-  public ResponseEntity<Void> logout(
-      @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
-      HttpServletRequest request) {
-    String accessToken = stripBearer(authorization);
-    String refreshToken = readRefreshCookie(request);
+  public ResponseEntity<Void> logout(HttpServletRequest request) {
+    String accessToken = readCookie(request, ACCESS_COOKIE);
+    String refreshToken = readCookie(request, REFRESH_COOKIE);
 
     authService.logout(accessToken, refreshToken);
 
     return ResponseEntity.noContent()
+        .header(HttpHeaders.SET_COOKIE, buildAccessCookie("", 0).toString())
         .header(HttpHeaders.SET_COOKIE, buildRefreshCookie("", 0).toString())
         .build();
   }
 
-  private ResponseCookie buildRefreshCookie(String value, long maxAgeSeconds) {
-    return ResponseCookie.from(REFRESH_COOKIE, value)
+  private ResponseCookie buildAccessCookie(String value, long maxAgeSeconds) {
+    return applyDomain(ResponseCookie.from(ACCESS_COOKIE, value)
         .httpOnly(true)
         .secure(cookieSecure)
         .sameSite(cookieSameSite)
-        .path(COOKIE_PATH)
-        .maxAge(maxAgeSeconds)
-        .build();
+        .path(ACCESS_COOKIE_PATH)
+        .maxAge(maxAgeSeconds)).build();
   }
 
-  private String readRefreshCookie(HttpServletRequest request) {
+  private ResponseCookie buildRefreshCookie(String value, long maxAgeSeconds) {
+    return applyDomain(ResponseCookie.from(REFRESH_COOKIE, value)
+        .httpOnly(true)
+        .secure(cookieSecure)
+        .sameSite(cookieSameSite)
+        .path(REFRESH_COOKIE_PATH)
+        .maxAge(maxAgeSeconds)).build();
+  }
+
+  private ResponseCookie.ResponseCookieBuilder applyDomain(ResponseCookie.ResponseCookieBuilder builder) {
+    if (cookieDomain != null && !cookieDomain.isBlank()) {
+      builder.domain(cookieDomain);
+    }
+    return builder;
+  }
+
+  private String readCookie(HttpServletRequest request, String name) {
     Cookie[] cookies = request.getCookies();
     if (cookies == null) return null;
     for (Cookie c : cookies) {
-      if (REFRESH_COOKIE.equals(c.getName())) {
+      if (name.equals(c.getName())) {
         return c.getValue();
       }
-    }
-    return null;
-  }
-
-  private String stripBearer(String authorization) {
-    if (authorization == null) return null;
-    String prefix = "Bearer ";
-    if (authorization.startsWith(prefix)) {
-      return authorization.substring(prefix.length());
     }
     return null;
   }

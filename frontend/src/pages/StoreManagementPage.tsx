@@ -165,8 +165,7 @@ export default function StoreManagementPage() {
   const [sessionMsg, setSessionMsg] = useState('');
 
   useEffect(() => {
-    const token = localStorage.getItem('nowait_token');
-    if (!token) {
+    if (!localStorage.getItem('nowait_user')) {
       navigate('/auth', { replace: true });
       return;
     }
@@ -394,15 +393,14 @@ export default function StoreManagementPage() {
     setImageMsg('');
     try {
       // 1) Presigned URL 발급
-      const token = localStorage.getItem('nowait_token');
       const presignRes = await fetch(
         `${API_BASE}/images/presigned-url?restaurantId=${targetRestaurantId}&filename=${encodeURIComponent(file.name)}`,
-        { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+        { method: 'POST', credentials: 'include' }
       );
       if (!presignRes.ok) throw new Error('Presigned URL 발급에 실패했습니다.');
       const { presignedUrl, imageKey } = await presignRes.json() as { presignedUrl: string; imageKey: string };
 
-      // 2) S3 직접 업로드
+      // 2) S3 직접 업로드 (S3 presigned URL은 자체 인증이므로 credentials 불필요)
       const uploadRes = await fetch(presignedUrl, {
         method: 'PUT',
         headers: { 'Content-Type': file.type },
@@ -413,7 +411,8 @@ export default function StoreManagementPage() {
       // 3) complete API 호출 → DB에 S3 URL 저장
       const completeRes = await fetch(`${API_BASE}/images/complete`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ restaurantId: targetRestaurantId, imageKey }),
       });
       if (!completeRes.ok) throw new Error('이미지 저장에 실패했습니다.');

@@ -5,13 +5,13 @@ import com.nowait.domain.user.type.UserRole;
 import com.nowait.global.security.principal.CustomUserDetails;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -20,8 +20,7 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private static final String HEADER = "Authorization";
-    private static final String PREFIX = "Bearer ";
+    private static final String ACCESS_COOKIE = "accessToken";
 
     private final JwtTokenProvider tokenProvider;
     private final UserRepository userRepository;
@@ -58,9 +57,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private String resolveToken(HttpServletRequest request) {
-        String bearer = request.getHeader(HEADER);
-        if (StringUtils.hasText(bearer) && bearer.startsWith(PREFIX)) {
-            return bearer.substring(PREFIX.length());
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) return null;
+        for (Cookie c : cookies) {
+            if (ACCESS_COOKIE.equals(c.getName())) {
+                return c.getValue();
+            }
         }
         return null;
     }

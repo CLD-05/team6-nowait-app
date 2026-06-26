@@ -61,6 +61,7 @@ cors:
 cookie:
   secure: ${COOKIE_SECURE:false}
   same-site: ${COOKIE_SAME_SITE:Lax}
+  domain: ${COOKIE_DOMAIN:}
 
 test:
   secret-token: ${TEST_SECRET_TOKEN:}

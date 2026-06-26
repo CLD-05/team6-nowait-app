@@ -108,17 +108,16 @@ export default function MyPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('nowait_token');
-      if (!token) { navigate('/auth'); return; }
-      const h = { Authorization: `Bearer ${token}` };
+      if (!localStorage.getItem('nowait_user')) { navigate('/auth'); return; }
+      const opts = { credentials: 'include' as const };
 
       // 각 API를 독립적으로 처리 — 하나가 실패해도 나머지는 정상 표시
       const [r1, r2, r3, r4, r5] = await Promise.all([
-        fetch(`${API_BASE}/reservations/me`, { headers: h }),
-        fetch(`${API_BASE}/waitings/me/history`, { headers: h }),
-        fetch(`${API_BASE}/users/me/favorites`, { headers: h }),
-        fetch(`${API_BASE}/notifications/me`, { headers: h }),
-        fetch(`${API_BASE}/users/me/reviews`, { headers: h }),
+        fetch(`${API_BASE}/reservations/me`, opts),
+        fetch(`${API_BASE}/waitings/me/history`, opts),
+        fetch(`${API_BASE}/users/me/favorites`, opts),
+        fetch(`${API_BASE}/notifications/me`, opts),
+        fetch(`${API_BASE}/users/me/reviews`, opts),
       ]);
 
       if (r1.status === 401) { navigate('/auth'); return; }
@@ -185,10 +184,10 @@ export default function MyPage() {
 
   async function updateName() {
     if (!nameInput.trim()) return;
-    const token = localStorage.getItem('nowait_token');
     const res = await fetch(`${API_BASE}/users/me`, {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: nameInput.trim() }),
     });
     if (res.ok) {
@@ -202,22 +201,25 @@ export default function MyPage() {
     }
   }
 
-  function logout() {
-    localStorage.removeItem('nowait_token');
+  async function logout() {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
+    } catch {
+      // 쿠키 삭제 실패해도 클라 상태는 정리
+    }
     localStorage.removeItem('nowait_user');
     navigate('/auth');
   }
 
   async function withdrawAccount() {
     if (!confirm('정말 탈퇴하시겠어요? 모든 데이터가 삭제됩니다.')) return;
-    const token = localStorage.getItem('nowait_token');
     const res = await fetch(`${API_BASE}/users/me`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     });
     if (res.ok) {
       alert('탈퇴가 완료됐습니다.');
-      logout();
+      await logout();
     } else {
       alert('탈퇴 처리 중 오류가 발생했습니다.');
     }
@@ -226,10 +228,9 @@ export default function MyPage() {
   async function cancelReservation(reservationToken: string) {
     if (!confirm('예약을 취소하시겠어요?')) return;
     try {
-      const token = localStorage.getItem('nowait_token');
       const response = await fetch(`${API_BASE}/reservations/${reservationToken}/cancel`, {
         method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!response.ok) {
         const err = await response.json().catch(() => ({})) as { message?: string };
@@ -245,10 +246,9 @@ export default function MyPage() {
   async function cancelWaiting(waitingToken: string) {
     if (!confirm('웨이팅을 취소하시겠어요?')) return;
     try {
-      const token = localStorage.getItem('nowait_token');
       const response = await fetch(`${API_BASE}/waitings/${waitingToken}/cancel`, {
         method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!response.ok) {
         const err = await response.json().catch(() => ({})) as { message?: string };
@@ -293,12 +293,11 @@ export default function MyPage() {
     if (!confirm(`선택한 ${selectedTokens.size}건의 내역을 삭제하시겠어요?`)) return;
     setDeleteLoading(true);
     try {
-      const jwtToken = localStorage.getItem('nowait_token');
       const results = await Promise.all(
         [...selectedTokens].map(resToken =>
           fetch(`${API_BASE}/reservations/${resToken}`, {
             method: 'DELETE',
-            headers: { Authorization: `Bearer ${jwtToken}` },
+            credentials: 'include',
           })
         )
       );
@@ -315,15 +314,13 @@ export default function MyPage() {
 
   async function removeFavorite(restaurantId: number) {
     if (!confirm('즐겨찾기를 삭제하시겠어요?')) return;
-    const token = localStorage.getItem('nowait_token');
-    const response = await fetch(`${API_BASE}/restaurants/${restaurantId}/favorite`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    const response = await fetch(`${API_BASE}/restaurants/${restaurantId}/favorite`, { method: 'POST', credentials: 'include' });
     if (!response.ok) throw new Error('즐겨찾기 해제에 실패했습니다.');
     await fetchData();
   }
 
   async function markAllRead() {
-    const token = localStorage.getItem('nowait_token');
-    const response = await fetch(`${API_BASE}/notifications/read-all`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
+    const response = await fetch(`${API_BASE}/notifications/read-all`, { method: 'PATCH', credentials: 'include' });
     if (!response.ok) throw new Error('알림 읽음 처리에 실패했습니다.');
     setNotifications(prev => prev.map(n => ({ ...n, isRead: 'Y' })));
   }
@@ -687,10 +684,9 @@ export default function MyPage() {
                         <button className="btn btn-sm" style={{ background: 'var(--tomato)', color: '#fff', border: '2px solid var(--ink)', fontSize: '0.78rem' }}
                           onClick={async () => {
                             if (!confirm('리뷰를 삭제할까요?')) return;
-                            const token = localStorage.getItem('nowait_token');
                             const res = await fetch(`${API_BASE}/reviews/${r.reviewId}`, {
                               method: 'DELETE',
-                              headers: { Authorization: `Bearer ${token}` },
+                              credentials: 'include',
                             });
                             if (res.ok) setReviews(prev => prev.filter(x => x.reviewId !== r.reviewId));
                             else alert('삭제에 실패했습니다.');

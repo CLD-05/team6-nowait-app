@@ -257,8 +257,7 @@ export default function RestaurantPage() {
   }, [id]);
 
   const fetchFavoriteStatus = useCallback(async () => {
-    const token = localStorage.getItem('nowait_token');
-    if (!token) return;
+    if (!localStorage.getItem('nowait_user')) return;
     try {
       const favorites = await request<FavoriteSummary[]>('/users/me/favorites');
       setIsFavorite(favorites.some(f => String(f.restaurantId) === id));
@@ -268,14 +267,13 @@ export default function RestaurantPage() {
   // ── SSE 개인 알림 연결 ───────────────────────────────────────
   // 로그인한 경우에만 연결. "waiting_called" 이벤트 수신 시 웨이팅 즉시 갱신.
   const connectSse = useCallback(async () => {
-    const token = localStorage.getItem('nowait_token');
-    if (!token) return;
+    if (!localStorage.getItem('nowait_user')) return;
 
     try {
       // 1) 단발 티켓 발급
       const res = await fetch(`${API_BASE}/notifications/stream/ticket`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) return;
       const { ticket } = await res.json() as { ticket: string };
@@ -345,13 +343,13 @@ export default function RestaurantPage() {
 
   async function handleReserve() {
     if (!selectedSlot) { alert('슬롯을 선택해주세요.'); return; }
-    const token = localStorage.getItem('nowait_token');
-    if (!token) { navigate('/auth'); return; }
+    if (!localStorage.getItem('nowait_user')) { navigate('/auth'); return; }
     setReserveLoading(true);
     try {
       const res = await fetch(`${API_BASE}/reservations`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           restaurantId: Number(id),
           slotId: selectedSlot.slotId, // ← slotId 사용
@@ -372,13 +370,13 @@ export default function RestaurantPage() {
   }
 
   async function handleWaiting() {
-    const token = localStorage.getItem('nowait_token');
-    if (!token) { navigate('/auth'); return; }
+    if (!localStorage.getItem('nowait_user')) { navigate('/auth'); return; }
     setWaitingLoading(true);
     try {
       const res = await fetch(`${API_BASE}/restaurants/${id}/waitings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ partySize }),
       });
       if (!res.ok) {
@@ -396,8 +394,7 @@ export default function RestaurantPage() {
 
   async function handleReview() {
     if (!reviewContent.trim()) { alert('리뷰 내용을 입력해주세요.'); return; }
-    const token = localStorage.getItem('nowait_token');
-    if (!token) { navigate('/auth'); return; }
+    if (!localStorage.getItem('nowait_user')) { navigate('/auth'); return; }
     setReviewLoading(true);
     try {
       await request(`/reservations/${reservationToken}/reviews`, {
@@ -416,8 +413,7 @@ export default function RestaurantPage() {
   }
 
   async function toggleFavorite() {
-    const token = localStorage.getItem('nowait_token');
-    if (!token) { navigate('/auth'); return; }
+    if (!localStorage.getItem('nowait_user')) { navigate('/auth'); return; }
     try {
       await request(`/restaurants/${id}/favorite`, { method: 'POST' });
       setIsFavorite(prev => !prev);

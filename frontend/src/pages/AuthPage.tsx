@@ -20,7 +20,7 @@ export default function AuthPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!localStorage.getItem('nowait_token')) return;
+    if (!localStorage.getItem('nowait_user')) return;
     navigate('/', { replace: true });
   }, [navigate]);
 
@@ -41,6 +41,7 @@ export default function AuthPage() {
     try {
       const response = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
@@ -51,13 +52,11 @@ export default function AuthPage() {
       }
 
       const data = await response.json() as {
-        accessToken: string;
         userId: number;
         email: string;
         name: string;
         role: UserRole;
       };
-      localStorage.setItem('nowait_token', data.accessToken);
       localStorage.setItem('nowait_user', JSON.stringify({
         id: data.userId,
         email: data.email,
