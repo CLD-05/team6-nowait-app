@@ -103,6 +103,15 @@ public class WaitingSessionService {
     return waitingSessionRepository.findById(sessionId)
         .orElseThrow(() -> new BusinessException(ErrorCode.WAITING_SESSION_NOT_FOUND));
   }
+  
+  // 오늘 세션 엔티티를 (restaurantId, 날짜)로 한 번에 조회.
+  // register 핫패스에서 getTodaySession + findSessionOrThrow 2번 조회하던 걸 1번으로 줄인다.
+  @Transactional(readOnly = true)
+  public WaitingSession findTodaySessionEntity(Long restaurantId) {
+    return waitingSessionRepository
+        .findByRestaurantIdAndSessionDate(restaurantId, LocalDate.now(TimeZones.KST))
+        .orElseThrow(() -> new BusinessException(ErrorCode.WAITING_SESSION_NOT_FOUND));
+  }
 
   private void verifyOwnership(Long restaurantId, Long loginUserId) {
     Restaurant restaurant = restaurantRepository.findById(restaurantId)
