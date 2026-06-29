@@ -256,19 +256,6 @@ Vite dev 서버 기본 포트는 `5173`입니다.
 
 ---
 
-## 📊 모니터링 포인트
-
-| 구분 | 주요 지표 |
-|---|---|
-| API | 요청 수, 오류율, 응답 시간 p95/p99 |
-| JVM / Spring | JVM 메모리, GC, Tomcat thread, HikariCP connection acquire time |
-| Redis Queue | pending, processing, dead-letter queue 길이 |
-| Worker | 처리 성공/실패 수, Redis → DB 반영 지연 |
-| 비즈니스 | 활성 웨이팅 수, 예약 큐 상태, 호출/입장/취소 이벤트 |
-| Kubernetes | Pod CPU/Memory, HPA 상태, KEDA ScaledObject 상태, 노드 증설 |
-
----
-
 ## 🔗 관련 레포지토리
 
 | 레포지토리 | 설명 |
@@ -283,12 +270,12 @@ Vite dev 서버 기본 포트는 `5173`입니다.
 
 | 이름 | 역할 | GitHub |
 |:---:|:---:|:---:|
-| 강성천 | Frontend | [@](https://github.com/potent93) |
-| 김유현 | Infra | [@](https://github.com/Containerxox) |
-| 김보경 | Backend | [@](https://github.com/bovo22) |
-| 이윤범 | Infra | [@](https://github.com/YunB98) |
-| 유준영 | Backend | [@](https://github.com/yjy1592) |
-| 김은지 | Infra | [@](https://github.com/namoo0515) |
+| 강성천 |  | [potent93](https://github.com/potent93) |
+| 김유현 |  | [Containerxox](https://github.com/Containerxox) |
+| 김보경 |  | [bovo22](https://github.com/bovo22) |
+| 이윤범 |  | [YunB98](https://github.com/YunB98) |
+| 유준영 |  | [yjy1592](https://github.com/yjy1592) |
+| 김은지 |  | [namoo0515](https://github.com/namoo0515) |
 
 <!-- 위 표의 빈칸에 이름 / 역할(예: Backend, Frontend, Infra) / GitHub 아이디를 채워주세요 -->
 
