@@ -14,8 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 import com.nowait.domain.notification.service.NotificationService;
 import com.nowait.domain.notification.type.NotificationType;
 import com.nowait.domain.restaurant.entity.Restaurant;
-import com.nowait.domain.restaurant.entity.RestaurantHour;
-import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
 import com.nowait.domain.restaurant.service.RestaurantHourService;
 import com.nowait.domain.restaurant.service.RestaurantService;
@@ -67,7 +65,6 @@ public class WaitingService {
   private final WaitingCallLogRepository waitingCallLogRepository;
   private final WaitingRedisLuaExecutor waitingRedis;
   private final NotificationService notificationService;
-  private final RestaurantHourRepository restaurantHourRepository;
   private final RestaurantHourService restaurantHourService;
   private final RestaurantService restaurantService;
   private final WaitingMetrics waitingMetrics;
@@ -122,8 +119,7 @@ public class WaitingService {
     	throw new BusinessException(ErrorCode.NOT_OPERATING_TIME);
     }
 
-    WaitingSession session = waitingSessionService.findSessionOrThrow(
-        findTodaySessionId(restaurantId));
+    WaitingSession session = waitingSessionService.findTodaySessionEntity(restaurantId);
 
     if (!session.getStatus().canAcceptWaiting()) {
       throw new BusinessException(ErrorCode.WAITING_SESSION_NOT_ACCEPTING);
