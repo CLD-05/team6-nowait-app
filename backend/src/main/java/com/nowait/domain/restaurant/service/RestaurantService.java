@@ -10,6 +10,7 @@ import com.nowait.domain.restaurant.type.DayOfWeek;
 
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,6 +43,10 @@ public class RestaurantService {
 	private final S3Service s3Service;
 	
 	@Transactional
+	@Caching(evict = {
+		@CacheEvict(value = "restaurant_list", key = "'all'", cacheManager = "cacheManager"),
+		@CacheEvict(value = "restaurant_search", allEntries = true, cacheManager = "cacheManager")
+	})
     public Long registerRestaurant(RestaurantRegisterRequest request, Long ownerId) {
 		if (restaurantRepository.existsByOwnerIdAndIsDeleted(ownerId, "N")) {
 			throw new BusinessException(ErrorCode.OWNER_ALREADY_EXISTS);
@@ -86,6 +91,7 @@ public class RestaurantService {
         return savedRestaurant.getId();
     }
 	
+	@Cacheable(value = "restaurant_list", key = "'all'", cacheManager = "cacheManager")
 	public List<RestaurantListResponse> getAllRestaurants() {
     return restaurantRepository.findAll().stream()
             .map(restaurant -> RestaurantListResponse.from(
@@ -94,7 +100,8 @@ public class RestaurantService {
             ))
             .collect(Collectors.toList());
 	}
-	
+
+	@Cacheable(value = "restaurant_search", key = "#keyword", cacheManager = "cacheManager")
 	public List<RestaurantListResponse> searchRestaurantsByName(String keyword) {
     return restaurantRepository.findByNameContaining(keyword).stream()
             .map(restaurant -> RestaurantListResponse.from(
@@ -142,7 +149,11 @@ public class RestaurantService {
 	}
 	
 	@Transactional
-	@CacheEvict(value = "restaurant", key = "#restaurantId", cacheManager = "cacheManager")
+	@Caching(evict = {
+		@CacheEvict(value = "restaurant", key = "#restaurantId", cacheManager = "cacheManager"),
+		@CacheEvict(value = "restaurant_list", key = "'all'", cacheManager = "cacheManager"),
+		@CacheEvict(value = "restaurant_search", allEntries = true, cacheManager = "cacheManager")
+	})
 	public void updateRestaurant(Long restaurantId, RestaurantUpdateRequest request, Long ownerId) {
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
@@ -185,7 +196,11 @@ public class RestaurantService {
 	}
 	
 	@Transactional
-	@CacheEvict(value = "restaurant", key = "#restaurantId", cacheManager = "cacheManager")
+	@Caching(evict = {
+		@CacheEvict(value = "restaurant", key = "#restaurantId", cacheManager = "cacheManager"),
+		@CacheEvict(value = "restaurant_list", key = "'all'", cacheManager = "cacheManager"),
+		@CacheEvict(value = "restaurant_search", allEntries = true, cacheManager = "cacheManager")
+	})
 	public void updateStatus(Long restaurantId, RestaurantStatus status, Long ownerId) {
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
 				.orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
@@ -198,7 +213,11 @@ public class RestaurantService {
 	}
 
 	@Transactional
-	@CacheEvict(value = "restaurant", key = "#restaurantId", cacheManager = "cacheManager")
+	@Caching(evict = {
+		@CacheEvict(value = "restaurant", key = "#restaurantId", cacheManager = "cacheManager"),
+		@CacheEvict(value = "restaurant_list", key = "'all'", cacheManager = "cacheManager"),
+		@CacheEvict(value = "restaurant_search", allEntries = true, cacheManager = "cacheManager")
+	})
 	public void deleteRestaurant(Long restaurantId, Long ownerId) {
 		
 		Restaurant restaurant = restaurantRepository.findById(restaurantId)
@@ -209,9 +228,9 @@ public class RestaurantService {
 		}
 		// [주의] 지금은 아직 MySQL에 칼럼을 안 만들었으니, 
         // 나중에 팀원들과 이야기해서 엔티티에 필드 추가하면 아래 주석을 풀어줄 것입니다!
-         restaurant.deleteRestaurant();
-         
-         log.info("💥 [Cache Evict] 식당이 삭제되어 Redis 캐시를 파기했습니다. ID: {}", restaurantId);
+        restaurant.deleteRestaurant();
+        
+        log.info("💥 [Cache Evict] 식당이 삭제되어 Redis 캐시를 파기했습니다. ID: {}", restaurantId);
 	}
 	
 	
