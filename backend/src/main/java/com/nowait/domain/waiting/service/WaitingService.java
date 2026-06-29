@@ -19,6 +19,7 @@ import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
 import com.nowait.domain.restaurant.service.RestaurantHourService;
 import com.nowait.domain.restaurant.service.RestaurantService;
+import com.nowait.domain.restaurant.dto.RestaurantDetailResponse;
 import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.waiting.dto.WaitingCallLogResponse;
@@ -82,8 +83,8 @@ public class WaitingService {
       WaitingRegisterRequest request) {
     try {
 
-    Restaurant restaurant = restaurantRepository.findById(restaurantId)
-        .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+    // 캐시된 식당 정보 사용 (RestaurantService.getRestaurantDetail은 @Cacheable + 상태변경 시 @CacheEvict)
+    RestaurantDetailResponse restaurant = restaurantService.getRestaurantDetail(restaurantId);
 
     if (restaurant.getStatus() != RestaurantStatus.OPEN) {
       throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
