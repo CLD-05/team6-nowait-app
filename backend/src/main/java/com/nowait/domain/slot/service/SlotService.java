@@ -5,9 +5,7 @@ import java.util.List;
 
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.cache.annotation.Caching;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,7 +63,7 @@ public class SlotService {
      * 난다 (Jackson은 프록시 내부 필드를 직렬화할 수 없음). 호출부가 필요한 값(날짜/시간)만
      * 담은 SlotDateTime DTO로 변환해 캐싱한다.
      */
-    @Cacheable(value = "slot_detail", key = "#slotId", cacheManager = "cacheManager")
+    @Cacheable(value = "slot_detail", key = "#slotId", cacheManager = "cacheManager", unless = "#result == null")
     public SlotDateTime getSlotById(Long slotId) {
         log.info("🔍 [MySQL 관통] 캐시에 단건 정보가 없어서 DB에서 읽어옵니다. 슬롯 ID: {}", slotId);
         return slotRepository.findById(slotId)
@@ -78,16 +76,10 @@ public class SlotService {
      * - 슬롯이 새로 생기면 해당 식당의 '그 날짜' 캐시를 폭파합니다.
      */
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = "slot", allEntries = true, cacheManager = "cacheManager"),
-            @CacheEvict(value = "slot_detail", allEntries = true, cacheManager = "cacheManager") // 🎯 팀원 최신 코드 유지
-        })
     public SlotResponse.SlotInfo createSlot(Long restaurantId, SlotCreateRequest request) {
-        log.info("💥 [Cache Evict] 새 슬롯 생성으로 인해 캐시를 삭제합니다. 날짜: {}", request.getSlotDate());
-        
         Restaurant restaurant = restaurantRepository.findById(restaurantId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
-        
+
         slotRepository.findByRestaurantIdAndSlotDateAndSlotTime(
             restaurantId, request.getSlotDate(), request.getSlotTime()
         ).ifPresent(s -> {
@@ -102,14 +94,10 @@ public class SlotService {
             .minHeadcount(request.getMinHeadcount())
             .maxHeadcount(request.getMaxHeadcount())
             .build();
-        
-        // 1. 깨끗하게 DB에 한 번만 저장
-        Slot savedSlot = slotRepository.save(slot);
-        
-        // 2. ★ [구조 고도화] 레디스 실행기를 깨워서 깔끔하게 7일 TTL 초기화!
-        reservationRedisLuaExecutor.initSlotCount(savedSlot.getId(), savedSlot.getTotalCount());
 
-        // 3. 중복 저장 걷어내고 리턴
+        Slot savedSlot = slotRepository.save(slot);
+        reservationRedisLuaExecutor.initSlotCount(savedSlot.getId(), savedSlot.getTotalCount());
+        evictSlotCaches(savedSlot);
         return SlotResponse.SlotInfo.from(savedSlot);
     }
 
@@ -121,21 +109,14 @@ public class SlotService {
      * - 점주가 슬롯 설정을 바꿀 때 전체 캐시를 날려버리는 가장 안전하고 속 편한 방식을 씁니다. (allEntries = true)
      */
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = "slot", allEntries = true, cacheManager = "cacheManager"),
-            @CacheEvict(value = "slot_detail", allEntries = true, cacheManager = "cacheManager") // 🎯 추가!
-        })
-    public SlotResponse.SlotInfo updateSlot(Long slotId,
-                                             SlotUpdateRequest request) {
-    	log.info("💥 [Cache Evict] 슬롯 수정으로 안전을 위해 슬롯 캐시 장부를 리셋합니다.");
+    public SlotResponse.SlotInfo updateSlot(Long slotId, SlotUpdateRequest request) {
         Slot slot = slotRepository.findById(slotId)
-            .orElseThrow(() -> new BusinessException(
-                ErrorCode.SLOT_NOT_FOUND));
+            .orElseThrow(() -> new BusinessException(ErrorCode.SLOT_NOT_FOUND));
 
         int diff = request.getTotalCount() - slot.getTotalCount();
         slot.updateTotalCount(request.getTotalCount(), diff);
-        
         slot.updateHeadcountRestrictions(request.getMinHeadcount(), request.getMaxHeadcount());
+        evictSlotCaches(slot);
         return SlotResponse.SlotInfo.from(slot);
     }
 
@@ -143,14 +124,10 @@ public class SlotService {
      * 🗑️ 슬롯 삭제 (점주 전용)
      */
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = "slot", allEntries = true, cacheManager = "cacheManager"),
-            @CacheEvict(value = "slot_detail", allEntries = true, cacheManager = "cacheManager") // 🎯 추가!
-        })
     public void deleteSlot(Long slotId) {
-    	log.info("💥 [Cache Evict] 슬롯 삭제로 슬롯 캐시 장부를 리셋합니다.");
         Slot slot = slotRepository.findById(slotId)
             .orElseThrow(() -> new BusinessException(ErrorCode.SLOT_NOT_FOUND));
+        evictSlotCaches(slot);
         slotRepository.delete(slot);
     }
 

@@ -81,6 +81,7 @@ public class TestDatabaseCleanUpService {
         // 우리 프로젝트에서 쓰는 웨이팅(waiting:*), 캐시(waitingPolicy::*) 관련 키들을 수집해 삭제합니다.
         Set<String> waitingKeys = redisTemplate.keys("waiting:*");
         Set<String> cacheKeys = redisTemplate.keys("waitingPolicy:*");   
+        Set<String> reservationKeys = redisTemplate.keys("reservation:*");
         
         if (waitingKeys != null && !waitingKeys.isEmpty()) {
             redisTemplate.delete(waitingKeys);
@@ -89,6 +90,11 @@ public class TestDatabaseCleanUpService {
         if (cacheKeys != null && !cacheKeys.isEmpty()) {
             redisTemplate.delete(cacheKeys);
             log.info("✅ Redis Look-Aside 정책 캐시 초기화 완료 ({}개)", cacheKeys.size());
+        }
+
+        if (reservationKeys != null && !reservationKeys.isEmpty()) {
+            redisTemplate.delete(reservationKeys);
+            log.info("✅ Redis 예약 키 초기화 완료 ({}개)", reservationKeys.size());
         }
 	}
 	
