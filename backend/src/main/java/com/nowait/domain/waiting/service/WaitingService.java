@@ -19,6 +19,7 @@ import com.nowait.domain.restaurant.repository.RestaurantHourRepository;
 import com.nowait.domain.restaurant.repository.RestaurantRepository;
 import com.nowait.domain.restaurant.service.RestaurantHourService;
 import com.nowait.domain.restaurant.service.RestaurantService;
+import com.nowait.domain.restaurant.dto.RestaurantDetailResponse;
 import com.nowait.domain.restaurant.type.DayOfWeek;
 import com.nowait.domain.restaurant.type.RestaurantStatus;
 import com.nowait.domain.waiting.dto.WaitingCallLogResponse;
@@ -38,7 +39,6 @@ import com.nowait.global.exception.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import com.nowait.domain.restaurant.dto.RestaurantDetailResponse;
 
 /*
  * 웨이팅 서비스 — Redis-first 아키텍처.
@@ -83,6 +83,7 @@ public class WaitingService {
       WaitingRegisterRequest request) {
     try {
 
+    // 캐시된 식당 정보 사용 (RestaurantService.getRestaurantDetail은 @Cacheable + 상태변경 시 @CacheEvict)
     RestaurantDetailResponse restaurant = restaurantService.getRestaurantDetail(restaurantId);
 
     if (restaurant.getStatus() != RestaurantStatus.OPEN) {
@@ -121,7 +122,8 @@ public class WaitingService {
     	throw new BusinessException(ErrorCode.NOT_OPERATING_TIME);
     }
 
-    WaitingSession session = waitingSessionService.findTodaySessionEntity(restaurantId);
+    WaitingSession session = waitingSessionService.findSessionOrThrow(
+        findTodaySessionId(restaurantId));
 
     if (!session.getStatus().canAcceptWaiting()) {
       throw new BusinessException(ErrorCode.WAITING_SESSION_NOT_ACCEPTING);
@@ -374,14 +376,10 @@ public class WaitingService {
   }
 
   private void verifyOwnership(Long restaurantId, Long loginUserId) {
-    // 캐시된 식당 정보 사용 (RestaurantService.getRestaurantDetail은 @Cacheable + 상태변경 시 @CacheEvict)
-    RestaurantDetailResponse restaurant = restaurantService.getRestaurantDetail(restaurantId);
-	  
-    if (restaurant.getStatus() != RestaurantStatus.OPEN) {
-      throw new BusinessException(ErrorCode.RESTAURANT_NOT_OPEN);
-    }
-    if ("N".equals(restaurant.getWaitingAvailable())) {
-      throw new BusinessException(ErrorCode.WAITING_NOT_AVAILABLE);
+    Restaurant restaurant = restaurantRepository.findById(restaurantId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.RESTAURANT_NOT_FOUND));
+    if (!loginUserId.equals(restaurant.getOwnerId())) {
+      throw new BusinessException(ErrorCode.NOT_RESTAURANT_OWNER);
     }
   }
 
