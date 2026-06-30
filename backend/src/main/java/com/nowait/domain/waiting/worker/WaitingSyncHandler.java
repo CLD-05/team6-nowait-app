@@ -43,6 +43,16 @@ public class WaitingSyncHandler {
   private final WaitingMetrics waitingMetrics;
 
   /*
+   * Worker 멱등성: 해당 waitingToken 이 이미 DB 에 저장됐는지 확인한다.
+   * UNIQUE 충돌(동시 처리) 또는 재기동 복구 시 "이미 처리됨"을 판정하는 데 사용한다.
+   * 독립적인 readOnly 트랜잭션 — 롤백된 저장 트랜잭션과 무관하게 재조회한다.
+   */
+  @Transactional(readOnly = true)
+  public boolean existsByWaitingToken(String token) {
+    return waitingRepository.existsByWaitingToken(token);
+  }
+
+  /*
    * 단건 동기화 — 폴백(배치 실패 시) 및 단독 처리 경로.
    *
    * @return true 면 정상 처리, false 면 일시적 오류 (재시도 대상).

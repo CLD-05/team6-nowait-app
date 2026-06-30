@@ -24,6 +24,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -151,5 +152,93 @@ class WaitingSyncWorkerTest {
 
     verify(handler, never()).syncBatch(any());
     verify(handler, never()).sync(anyString());
+  }
+
+  /* ===== 멱등성 보완: 중복 waitingToken UNIQUE 충돌 → DLQ 회피 (문서 C/D/E) ===== */
+
+  @Test
+  @DisplayName("[C] UNIQUE 충돌 + DB에 row 존재 → 멱등 성공으로 ack, DLQ 보내지 않음")
+  void duplicateKeyViolationWithExistingRow_idempotentAck() {
+    givenPopped("t1");
+    doThrow(new RuntimeException("boom")).when(handler).syncBatch(any());
+    doThrow(new DataIntegrityViolationException(
+        "Duplicate entry 'tok' for key 'waiting.UKinb630r07htm38oi45nkoqpen'"))
+        .when(handler).sync("t1");
+    when(handler.existsByWaitingToken("t1")).thenReturn(true);
+
+    worker.poll();
+
+    verify(waitingMetrics).idempotentDuplicateSkipped();
+    verify(listOps).remove(WaitingRedisKeys.PROCESSING, 1, "t1"); // ack
+    // DLQ 로 보내지 않는다
+    verify(listOps, never()).leftPush(eq(WaitingRedisKeys.DEAD_LETTER), anyString());
+    verify(waitingMetrics, never()).deadLettered();
+    verify(waitingMetrics, never()).persistFailed();
+  }
+
+  @Test
+  @DisplayName("[E] UNIQUE 충돌처럼 보이나 DB row 없음 → 멱등 처리 안 함, DLQ 유지")
+  void duplicateKeyViolationButRowMissing_deadLetters() {
+    givenPopped("t1");
+    doThrow(new RuntimeException("boom")).when(handler).syncBatch(any());
+    doThrow(new DataIntegrityViolationException("Duplicate entry 'tok' for key '...'"))
+        .when(handler).sync("t1");
+    when(handler.existsByWaitingToken("t1")).thenReturn(false);
+
+    worker.poll();
+
+    verify(waitingMetrics, never()).idempotentDuplicateSkipped();
+    verify(waitingMetrics).persistFailed();
+    verify(waitingMetrics).deadLettered();
+    verify(listOps).leftPush(eq(WaitingRedisKeys.DEAD_LETTER), startsWith("t1|"));
+  }
+
+  @Test
+  @DisplayName("[D] 중복키가 아닌 일반 DB 예외 → 멱등 처리 안 함, DLQ 유지")
+  void nonDuplicateException_deadLetters() {
+    givenPopped("t1");
+    doThrow(new RuntimeException("boom")).when(handler).syncBatch(any());
+    doThrow(new RuntimeException("connection reset")).when(handler).sync("t1");
+
+    worker.poll();
+
+    verify(waitingMetrics, never()).idempotentDuplicateSkipped();
+    // 중복키가 아니므로 existsByWaitingToken 으로 멱등 판정조차 하지 않는다
+    verify(handler, never()).existsByWaitingToken(anyString());
+    verify(waitingMetrics).deadLettered();
+    verify(listOps).leftPush(eq(WaitingRedisKeys.DEAD_LETTER), startsWith("t1|"));
+  }
+
+  /* ===== recoverInFlight 멱등성 보완 (문서 F) ===== */
+
+  @Test
+  @DisplayName("[F] 복구 시 in-flight 토큰이 이미 DB에 있으면 pending으로 되돌리지 않고 제거한다")
+  void recoverInFlight_skipsTokenAlreadyInDb() {
+    when(listOps.size(WaitingRedisKeys.PROCESSING)).thenReturn(1L);
+    when(listOps.rightPopAndLeftPush(WaitingRedisKeys.PROCESSING, WaitingRedisKeys.PENDING_SYNC))
+        .thenReturn("t1");
+    when(handler.existsByWaitingToken("t1")).thenReturn(true);
+
+    ReflectionTestUtils.invokeMethod(worker, "recoverInFlight");
+
+    // pending 에 들어간 사본을 제거하고 skip 메트릭 증가
+    verify(listOps).remove(WaitingRedisKeys.PENDING_SYNC, 1, "t1");
+    verify(waitingMetrics).recoverSkippedExisting();
+    verify(waitingMetrics, never()).recoveredInflight();
+  }
+
+  @Test
+  @DisplayName("[F-2] 복구 시 DB에 없는 토큰은 pending으로 복구한다")
+  void recoverInFlight_requeuesTokenNotInDb() {
+    when(listOps.size(WaitingRedisKeys.PROCESSING)).thenReturn(1L);
+    when(listOps.rightPopAndLeftPush(WaitingRedisKeys.PROCESSING, WaitingRedisKeys.PENDING_SYNC))
+        .thenReturn("t1");
+    when(handler.existsByWaitingToken("t1")).thenReturn(false);
+
+    ReflectionTestUtils.invokeMethod(worker, "recoverInFlight");
+
+    verify(waitingMetrics).recoveredInflight();
+    verify(waitingMetrics, never()).recoverSkippedExisting();
+    verify(listOps, never()).remove(eq(WaitingRedisKeys.PENDING_SYNC), org.mockito.ArgumentMatchers.anyLong(), anyString());
   }
 }

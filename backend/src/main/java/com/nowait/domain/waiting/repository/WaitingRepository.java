@@ -56,6 +56,9 @@ public interface WaitingRepository extends JpaRepository<Waiting, Long> {
   /* Worker(배치): 청크의 토큰들에 대한 기존 행을 한 번의 쿼리로 조회 (N+1 회피) */
   List<Waiting> findByWaitingTokenIn(Collection<String> waitingTokens);
 
+  /* Worker(멱등성): UNIQUE 충돌/복구 시 해당 token 이 이미 DB 에 저장됐는지 확인 */
+  boolean existsByWaitingToken(String waitingToken);
+
   /* 마이페이지: 사용자의 전체 웨이팅 이력 (최신순) */
   List<Waiting> findByUserIdOrderByRegisteredAtDesc(Long userId);
 }
