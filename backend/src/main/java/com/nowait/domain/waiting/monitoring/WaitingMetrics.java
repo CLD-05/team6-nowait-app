@@ -60,6 +60,9 @@ public class WaitingMetrics {
   private Counter workerBatchProcessed;
   private Counter workerBatchFallback;
   private Counter workerBatchFailed;
+  private Counter workerIdempotentSkip;
+  private Counter workerRecoveredInflight;
+  private Counter workerRecoverSkippedExisting;
   private Timer persistLag;
 
   @PostConstruct
@@ -90,6 +93,14 @@ public class WaitingMetrics {
     workerBatchProcessed = meterRegistry.counter("nowait.worker.batch.processed");
     workerBatchFallback = meterRegistry.counter("nowait.worker.batch.fallback");
     workerBatchFailed = meterRegistry.counter("nowait.worker.batch.failed");
+    // Worker 멱등성 보완 (at-least-once 중복 처리 관측용, low-cardinality)
+    //   idempotent.skip            : 같은 waitingToken 이 이미 DB 에 있어(동시 처리 UNIQUE 충돌)
+    //                                중복 INSERT 를 멱등 성공으로 처리한 횟수 (DLQ 회피)
+    //   recovered.inflight         : 재기동 시 in-flight 토큰을 pending 으로 복구한 횟수
+    //   recover.skipped.existing   : 이미 DB 에 저장된 토큰이라 복구하지 않고 제거한 횟수
+    workerIdempotentSkip = meterRegistry.counter("nowait.worker.idempotent.skip");
+    workerRecoveredInflight = meterRegistry.counter("nowait.worker.recovered.inflight");
+    workerRecoverSkippedExisting = meterRegistry.counter("nowait.worker.recover.skipped.existing");
     persistLag = Timer.builder("nowait.worker.persist.lag")
         .description("Redis->DB 비동기 저장 지연")
         .publishPercentileHistogram()
@@ -185,6 +196,21 @@ public class WaitingMetrics {
   /* 폴백에서도 끝내 실패해 dead-letter 된 토큰 1건 */
   public void batchFailed() {
     workerBatchFailed.increment();
+  }
+
+  /* 같은 waitingToken 이 이미 DB 에 존재 → 중복 INSERT 를 멱등 성공으로 처리(DLQ 회피) */
+  public void idempotentDuplicateSkipped() {
+    workerIdempotentSkip.increment();
+  }
+
+  /* 재기동 시 in-flight 토큰을 pending 으로 복구 */
+  public void recoveredInflight() {
+    workerRecoveredInflight.increment();
+  }
+
+  /* 이미 DB 에 저장된 토큰이라 복구하지 않고 processing 에서 제거 */
+  public void recoverSkippedExisting() {
+    workerRecoverSkippedExisting.increment();
   }
 
   /* ===== gauge 헬퍼 ===== */

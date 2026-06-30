@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -53,6 +54,11 @@ public class WaitingSyncWorker {
   /*
    * 부팅 시 processing 큐에 남은 메시지를 pending-sync 로 되돌린다.
    * (이전 Worker 가 처리 도중 죽었을 때를 위한 복구)
+   *
+   * 멱등성 보완: 이미 DB 에 저장 완료된 토큰은 재처리할 필요가 없으므로 pending 으로
+   * 되돌리지 않고 제거한다. 단 원자성을 위해 "먼저 pending 으로 이동(rightPopAndLeftPush)"한 뒤
+   * 존재하면 그 사본을 제거한다 — 제거 직전 크래시가 나도 토큰은 pending 에 남아
+   * 멱등 sync 로 안전하게 재처리되므로 유실되지 않는다.
    */
   private void recoverInFlight() {
     Long size = redis.opsForList().size(WaitingRedisKeys.PROCESSING);
@@ -63,6 +69,15 @@ public class WaitingSyncWorker {
       String token = redis.opsForList().rightPopAndLeftPush(
           WaitingRedisKeys.PROCESSING, WaitingRedisKeys.PENDING_SYNC);
       if (token == null) break;
+
+      if (handler.existsByWaitingToken(token)) {
+        // 이미 DB 에 저장됨 → 방금 pending 에 넣은 사본 제거, 재처리 생략
+        redis.opsForList().remove(WaitingRedisKeys.PENDING_SYNC, 1, token);
+        waitingMetrics.recoverSkippedExisting();
+        log.info("Recovered in-flight token already in DB. Skip requeue. token={}", token);
+      } else {
+        waitingMetrics.recoveredInflight();
+      }
     }
   }
 
@@ -118,7 +133,7 @@ public class WaitingSyncWorker {
 
   /*
    * 단건 폴백 — 청크 배치가 실패했을 때만 호출된다.
-   * 성공 토큰은 정상 ack, 끝내 실패한 토큰만 기존 정책대로 dead-letter 로 보낸다.
+   * 성공 토큰은 정상 ack, 실패 토큰은 finishFailure 가 멱등 성공/DLQ 를 판정한다.
    */
   private void fallbackSingle(List<String> chunk) {
     for (String token : chunk) {
@@ -127,17 +142,65 @@ public class WaitingSyncWorker {
         if (ok) {
           ack(token);
         } else {
-          waitingMetrics.persistFailed();
-          waitingMetrics.batchFailed();
-          moveToDeadLetter(token, "handler returned false (fallback)");
+          finishFailure(token, null, "handler returned false (fallback)");
         }
       } catch (Exception e) {
-        log.error("Fallback sync failed token={}. Moving to dead-letter.", token, e);
-        waitingMetrics.persistFailed();
-        waitingMetrics.batchFailed();
-        moveToDeadLetter(token, e.getClass().getSimpleName() + ": " + e.getMessage());
+        finishFailure(token, e, e.getClass().getSimpleName() + ": " + e.getMessage());
       }
     }
+  }
+
+  /*
+   * 단건 처리 실패의 최종 판정.
+   *
+   * at-least-once 구조(재시도/복구/파드 재기동/스케일다운, 또는 동시 처리)에서는 같은
+   * waitingToken 의 중복 INSERT 가 발생할 수 있고, DB 의 UNIQUE 제약이 이를 막아
+   * DataIntegrityViolationException 을 던진다. 이는 데이터 무결성 문제(중복 행)가 아니라
+   * "이미 누군가 저장했다"는 신호이므로 DLQ 대상이 아니다.
+   *
+   * 안전조건: UNIQUE 위반처럼 보여도 "실제 DB 에 해당 row 가 존재할 때만" 멱등 성공으로 처리한다.
+   *   - 중복키 위반 + row 존재  → 멱등 성공: ack, retry/DLQ 없음, idempotent_skip 증가
+   *   - 그 외(진짜 저장 실패, 또는 위반처럼 보이나 row 없음) → 기존 retry/DLQ 정책 유지
+   */
+  private void finishFailure(String token, Exception cause, String reason) {
+    if (cause != null && isDuplicateKeyViolation(cause) && handler.existsByWaitingToken(token)) {
+      waitingMetrics.idempotentDuplicateSkipped();
+      log.warn("Waiting token already persisted. Treating as idempotent success. token={}", token);
+      ack(token);
+      return;
+    }
+
+    if (cause != null) {
+      log.error("Fallback sync failed token={}. Moving to dead-letter.", token, cause);
+    } else {
+      log.error("Fallback sync returned failure token={}. Moving to dead-letter.", token);
+    }
+    waitingMetrics.persistFailed();
+    waitingMetrics.batchFailed();
+    moveToDeadLetter(token, reason);
+  }
+
+  /*
+   * DB UNIQUE 제약 위반(중복키)인지 판정한다.
+   * Spring 의 DataIntegrityViolationException 계열이거나, cause 체인의 메시지에
+   * "duplicate" / "waiting_token" 흔적이 있으면 중복키로 본다.
+   */
+  private boolean isDuplicateKeyViolation(Throwable e) {
+    for (Throwable t = e; t != null; t = t.getCause()) {
+      if (t instanceof DataIntegrityViolationException) {
+        return true;
+      }
+      String msg = t.getMessage();
+      if (msg != null) {
+        String lower = msg.toLowerCase();
+        if (lower.contains("duplicate entry")
+            || lower.contains("duplicate key")
+            || lower.contains("waiting_token")) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /* DB 영속화 성공 후 processing 큐에서 토큰 1건 제거 (ack) */
