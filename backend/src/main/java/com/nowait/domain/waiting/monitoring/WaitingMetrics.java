@@ -101,8 +101,22 @@ public class WaitingMetrics {
   /*
    * BusinessException 발생 시 호출. ErrorCode 별로 적절한 카운터에 분배한다.
    * 수용 초과/중복은 정상 비즈니스 결과 → 실패 카운터 증가 X.
+   *
+   * nowait_waiting_register_rejected_total{reason="<ERROR_CODE>"}:
+   *   k6 가 보는 등록 4xx 응답을 "백엔드 비즈니스 거절 사유"별로 분해하기 위한 태그 카운터.
+   *   기존 카운터(capacity_full/duplicate/failure)만으로는 집계되지 않던 사유
+   *   (영업시간 외/휴무일/미오픈/세션 미수신 등)까지 모두 reason 라벨로 분리해
+   *   "k6 4xx 가 왜 발생하는지" Grafana 에서 설명 가능하게 한다.
+   *   ⚠️ reason 라벨은 반드시 ErrorCode enum(code.name())만 사용한다.
+   *      자유 형식 예외 메시지를 라벨로 쓰면 Prometheus 라벨 카디널리티가 폭발한다.
    */
   public void registerRejected(ErrorCode code) {
+    // (신규) 모든 비즈니스 거절을 사유별로 집계 — k6 4xx 분해용
+    meterRegistry.counter("nowait.waiting.register.rejected", "reason", code.name())
+        .increment();
+
+    // (기존) Grafana 패널/알림 룰 호환을 위해 사유별 전용 카운터도 그대로 유지.
+    //        일부 이벤트가 신규 태그 카운터와 기존 카운터에 모두 잡히는 것은 의도된 동작이다.
     if (code == ErrorCode.WAITING_COUNT_EXCEEDED) {
       capacityFull.increment();
     } else if (code == ErrorCode.DUPLICATE_WAITING) {
@@ -110,7 +124,8 @@ public class WaitingMetrics {
     } else if (code == ErrorCode.INTERNAL_SERVER_ERROR) {
       registerFailure.increment();
     }
-    // 그 외(영업시간/휴무일/미오픈 등)는 정상적인 비즈니스 거절 → 집계하지 않음
+    // 그 외(영업시간/휴무일/미오픈 등)는 정상적인 비즈니스 거절 → 기존 실패/전용 카운터엔 집계 X
+    // (단, 위 신규 rejected_total{reason=...} 에는 항상 잡힌다)
   }
 
   /* 비즈니스 예외가 아닌 예기치 못한 시스템 실패 (Redis 장애 등) */
