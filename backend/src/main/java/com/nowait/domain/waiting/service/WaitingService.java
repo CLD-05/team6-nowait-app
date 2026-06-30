@@ -216,6 +216,26 @@ public class WaitingService {
   }
 
   /*
+   * 사용자: 단일 웨이팅 토큰 상태 조회 (polling 전용)
+   * GET /api/v1/waitings/{waitingToken}
+   *
+   * 프론트/k6 polling 은 이미 waitingToken 을 알고 있으므로 활성 목록 전체(/me)를
+   * 조회할 필요가 없다. 해당 토큰 하나만 Redis 에서 조회한다 — DB 미사용, KEYS 미사용.
+   */
+  public WaitingResponse getMyWaitingByToken(String waitingToken, Long loginUserId) {
+    waitingMetrics.pollingObserved();
+
+    WaitingTokenData data = findTokenDataOrThrow(waitingToken);
+
+    if (!Objects.equals(data.userId(), loginUserId)) {
+      throw new BusinessException(ErrorCode.ACCESS_DENIED);
+    }
+
+    long ahead = waitingRedis.aheadCount(data.sessionId(), waitingToken);
+    return WaitingResponse.of(waitingToken, data, ahead);
+  }
+
+  /*
    * 사용자: 본인 웨이팅 취소
    * PATCH /api/waitings/{token}/cancel
    */

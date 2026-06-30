@@ -15,6 +15,7 @@ import com.nowait.domain.user.entity.User;
 import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.global.exception.BusinessException;
 import com.nowait.global.exception.ErrorCode;
+import com.nowait.global.security.jwt.WithdrawnUserCache;
 
 import lombok.RequiredArgsConstructor;
 
@@ -22,9 +23,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class UserService {
-	
+
 	private final UserRepository userRepository;
 	private final RestaurantRepository restaurantRepository; // 💡 식당 연쇄 삭제를 위해 주입!
+	private final WithdrawnUserCache withdrawnUserCache; // 탈퇴 즉시 발급된 토큰 무력화 (인증 필터에서 DB 조회 제거)
 	
 	/*
 	 * @param
@@ -65,6 +67,10 @@ public class UserService {
         user.withdrawUser();
         userRepository.save(user);
         userRepository.flush();
+
+        // 2-1. 탈퇴 마커 등록 — 인증 필터가 매 요청 DB 조회 없이도 기존 Access 토큰을 거부하도록.
+        //      (필터에서 userRepository.findById 기반 탈퇴 검사를 제거했으므로 반드시 필요)
+        withdrawnUserCache.markWithdrawn(userId);
 
         // 3. 🌟 [연쇄 반응] 이 사람이 사장님(점주)이라면, 운영 중인 모든 식당도 강제 소프트 딜리트!
         List<Restaurant> myRestaurants = restaurantRepository.findByOwnerIdAndIsDeleted(userId, "N");

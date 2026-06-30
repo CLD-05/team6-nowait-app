@@ -48,6 +48,17 @@ public class WaitingController {
     return ResponseEntity.ok(waitingService.getMyWaitingHistory(principal.getUserId()));
   }
 
+  /* 사용자: 단일 웨이팅 토큰 상태 조회 (polling 전용 — Redis only, DB 미사용)
+   * 정적 경로 /me, /me/history 가 path-variable 보다 우선 매칭되므로 충돌 없음. */
+  @PreAuthorize("isAuthenticated()")
+  @GetMapping("/api/v1/waitings/{waitingToken}")
+  public ResponseEntity<WaitingResponse> getMyWaitingByToken(
+      @PathVariable String waitingToken,
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    return ResponseEntity.ok(
+        waitingService.getMyWaitingByToken(waitingToken, principal.getUserId()));
+  }
+
   /* 사용자: 내 웨이팅 취소 (토큰 기반) */
   @PreAuthorize("isAuthenticated()")
   @PatchMapping("/api/v1/waitings/{token}/cancel")
