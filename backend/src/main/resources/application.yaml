@@ -64,9 +64,6 @@ cookie:
   secure: ${COOKIE_SECURE:false}
   same-site: ${COOKIE_SAME_SITE:Lax}
 
-test:
-  secret-token: ${TEST_SECRET_TOKEN:}
-
 aws:
   s3:
     region: ${AWS_S3_REGION:ap-northeast-2}

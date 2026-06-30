@@ -21,7 +21,7 @@ public class TestSupportController {
 
 	// application.yml/env(TEST_SECRET_TOKEN)에 명시적으로 설정해야만 동작합니다. 기본값을 두지 않음으로써
 	// 토큰을 설정하지 않은 환경(예: 운영)에서는 이 엔드포인트가 절대 통과되지 않도록 합니다.
-	@Value("${test.secret-token:}")
+	@Value("${TEST_SECRET_TOKEN:}")
 	private String secretToken;
 
 	@PostMapping("/reset")
