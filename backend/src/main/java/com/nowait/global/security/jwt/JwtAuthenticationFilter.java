@@ -1,6 +1,5 @@
 package com.nowait.global.security.jwt;
 
-import com.nowait.domain.user.repository.UserRepository;
 import com.nowait.domain.user.type.UserRole;
 import com.nowait.global.security.principal.CustomUserDetails;
 import jakarta.servlet.FilterChain;
@@ -24,8 +23,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String PREFIX = "Bearer ";
 
     private final JwtTokenProvider tokenProvider;
-    private final UserRepository userRepository;
     private final TokenBlacklist tokenBlacklist;
+    private final WithdrawnUserCache withdrawnUserCache;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -38,15 +37,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 && tokenProvider.isAccessToken(token)
                 && !tokenBlacklist.contains(tokenProvider.getJti(token))) {
             Long userId = tokenProvider.getUserId(token);
-            String email = tokenProvider.getEmail(token);
-            UserRole role = tokenProvider.getRole(token);
 
-            // 탈퇴한 계정은 기존 토큰으로도 인증 거부
-            boolean withdrawn = userRepository.findById(userId)
-                    .map(u -> "Y".equals(u.getIsDeleted()))
-                    .orElse(true);
+            // 탈퇴/차단된 계정은 토큰이 유효해도 인증 거부.
+            // 매 요청 DB 조회(userRepository.findById) 대신 Redis 마커로 판단해
+            // 상태조회 polling 트래픽이 DB 커넥션 부하로 전환되지 않게 한다.
+            if (!withdrawnUserCache.isWithdrawn(userId)) {
+                String email = tokenProvider.getEmail(token);
+                UserRole role = tokenProvider.getRole(token);
 
-            if (!withdrawn) {
                 CustomUserDetails principal = CustomUserDetails.fromToken(userId, email, role);
                 UsernamePasswordAuthenticationToken auth =
                         new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());

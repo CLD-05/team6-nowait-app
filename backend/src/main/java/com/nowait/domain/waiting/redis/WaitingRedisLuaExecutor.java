@@ -224,7 +224,14 @@ public class WaitingRedisLuaExecutor {
     return value == null ? 0 : Integer.parseInt(value);
   }
 
-  /* 사용자의 모든 활성 웨이팅 토큰 (여러 식당 동시 등록 가능) */
+  /* 사용자의 모든 활성 웨이팅 토큰 (여러 식당 동시 등록 가능)
+   *
+   * TODO(운영 부적합): redisTemplate.keys(...) 는 전체 키스페이스를 O(N) 스캔하며
+   *   Redis 싱글 스레드를 블로킹한다. polling 트래픽이 많을수록 Redis CPU 가 치솟는다.
+   *   개선안: 등록 시 SADD waiting:user:{userId}:active-tokens {token},
+   *           취소/입장/만료 시 SREM, 목록 조회 시 SMEMBERS 로 전환.
+   *   단기적으로는 polling 을 토큰 단위 GET /api/v1/waitings/{waitingToken} 로 옮겨
+   *   이 경로(/me)의 호출 빈도 자체를 줄였다. (/me 는 프론트 목록 조회용으로만 유지) */
   public List<String> findActiveTokensOf(Long userId) {
     Set<String> keys = redisTemplate.keys(WaitingRedisKeys.userActivePattern(userId));
     if (keys == null || keys.isEmpty()) return Collections.emptyList();
