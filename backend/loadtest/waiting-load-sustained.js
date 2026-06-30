@@ -1,5 +1,6 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
+import { Counter } from 'k6/metrics';
 
 // Phase 1 본 부하테스트 (지속 버전) — waiting-load.js와 동일한 시나리오지만 peak VU를
 // 길게 유지한다. KubeHpaMaxedOut(15분 지속)과 우리가 만든 NowaitHighMemoryUsage/
@@ -55,6 +56,32 @@ const HOLD = __ENV.HOLD || '16m';
 const RAMPDOWN = __ENV.RAMPDOWN || '1m';
 
 http.setResponseCallback(http.expectedStatuses(200, 201, { min: 400, max: 499 }));
+
+// ── 4xx 상태코드별 분해 카운터 (waiting-load.js 와 동일 규약) ────────────────
+// 백엔드 nowait_waiting_register_rejected_total{reason="<ERROR_CODE>"} 와 교차 분석해
+// 지속 부하 중 발생하는 4xx 가 어떤 비즈니스 사유인지 설명할 수 있게 한다.
+const reg4xx = new Counter('waiting_register_4xx');
+const reg400 = new Counter('waiting_register_400');
+const reg401 = new Counter('waiting_register_401');
+const reg403 = new Counter('waiting_register_403');
+const reg404 = new Counter('waiting_register_404');
+const reg409 = new Counter('waiting_register_409');
+const status4xx = new Counter('waiting_status_4xx');
+const status400 = new Counter('waiting_status_400');
+const status401 = new Counter('waiting_status_401');
+const status403 = new Counter('waiting_status_403');
+const status404 = new Counter('waiting_status_404');
+const status409 = new Counter('waiting_status_409');
+
+function record4xx(status, agg, byCode) {
+  if (status >= 400 && status < 500) {
+    agg.add(1);
+    const c = byCode[status];
+    if (c) c.add(1);
+  }
+}
+const REG_BY_CODE = { 400: reg400, 401: reg401, 403: reg403, 404: reg404, 409: reg409 };
+const STATUS_BY_CODE = { 400: status400, 401: status401, 403: status403, 404: status404, 409: status409 };
 
 export const options = {
   scenarios: {
@@ -177,8 +204,9 @@ export default function (data) {
   const registerRes = http.post(
     `${BASE_URL}/api/v1/restaurants/${data.restaurantId}/waitings`,
     JSON.stringify({ partySize }),
-    { headers: jsonHeaders(token) }
+    { headers: jsonHeaders(token), tags: { name: 'waiting_register' } }
   );
+  record4xx(registerRes.status, reg4xx, REG_BY_CODE);
   check(registerRes, { '웨이팅 등록 201 또는 세션없음/중복 4xx': (r) => r.status === 201 || (r.status >= 400 && r.status < 500) });
 
   // 등록 성공 시에만 토큰 단위 상태조회 polling (/me 의 Redis KEYS 스캔 회피).
@@ -187,7 +215,8 @@ export default function (data) {
 
   for (let i = 0; i < 3; i++) {
     sleep(2);
-    const statusRes = http.get(`${BASE_URL}/api/v1/waitings/${waitingToken}`, { headers: jsonHeaders(token) });
+    const statusRes = http.get(`${BASE_URL}/api/v1/waitings/${waitingToken}`, { headers: jsonHeaders(token), tags: { name: 'waiting_status' } });
+    record4xx(statusRes.status, status4xx, STATUS_BY_CODE);
     check(statusRes, { '웨이팅 상태 조회 200': (r) => r.status === 200 });
   }
 }

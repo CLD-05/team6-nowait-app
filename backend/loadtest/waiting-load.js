@@ -60,6 +60,36 @@ const regDur = new Trend('waiting_register_duration', true);
 const statusDur = new Trend('waiting_status_duration', true);
 const reg5xx = new Counter('waiting_register_5xx');
 
+// ── 4xx 상태코드별 분해 카운터 ──────────────────────────────────────────────
+// 등록/상태조회의 4xx 를 상태코드 단위로 쪼개 둔다. 백엔드의
+// nowait_waiting_register_rejected_total{reason="<ERROR_CODE>"} 와 교차 분석하면
+// "k6 가 본 4xx 가 어떤 비즈니스 사유(중복/만석/영업시간 외/세션 미수신 등)인지" 설명된다.
+// 집계(_4xx)는 기존 호환을 위해 유지하고, 코드별 카운터를 추가한다.
+const reg4xx = new Counter('waiting_register_4xx');
+const reg400 = new Counter('waiting_register_400');
+const reg401 = new Counter('waiting_register_401');
+const reg403 = new Counter('waiting_register_403');
+const reg404 = new Counter('waiting_register_404');
+const reg409 = new Counter('waiting_register_409');
+
+const status4xx = new Counter('waiting_status_4xx');
+const status400 = new Counter('waiting_status_400');
+const status401 = new Counter('waiting_status_401');
+const status403 = new Counter('waiting_status_403');
+const status404 = new Counter('waiting_status_404');
+const status409 = new Counter('waiting_status_409');
+
+// 4xx 응답을 집계 카운터 + 상태코드별 카운터로 동시에 기록한다.
+function record4xx(status, agg, byCode) {
+  if (status >= 400 && status < 500) {
+    agg.add(1);
+    const c = byCode[status];
+    if (c) c.add(1);
+  }
+}
+const REG_BY_CODE = { 400: reg400, 401: reg401, 403: reg403, 404: reg404, 409: reg409 };
+const STATUS_BY_CODE = { 400: status400, 401: status401, 403: status403, 404: status404, 409: status409 };
+
 export const options = {
   scenarios: {
     baseline: {
@@ -201,6 +231,7 @@ export default function (data) {
   );
   regDur.add(regRes.timings.duration);
   if (regRes.status >= 500) reg5xx.add(1);
+  record4xx(regRes.status, reg4xx, REG_BY_CODE);
   check(regRes, {
     '등록 201 또는 4xx': (r) => r.status === 201 || (r.status >= 400 && r.status < 500),
   });
@@ -217,6 +248,7 @@ export default function (data) {
       tags: { name: 'waiting_status' },
     });
     statusDur.add(sRes.timings.duration);
+    record4xx(sRes.status, status4xx, STATUS_BY_CODE);
     check(sRes, { '상태조회 200': (r) => r.status === 200 });
   }
 }
