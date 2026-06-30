@@ -4,7 +4,9 @@ import com.nowait.domain.reservation.redis.ReservationRedisKeys;
 import com.nowait.global.exception.ErrorCode;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -39,6 +41,25 @@ public class ReservationMetrics {
   private Counter reservationSuccess;
   private Counter reservationFailure;
 
+  /*
+   * 예약 Worker(reservation-worker) 처리 메트릭. waiting-worker 와 같은 Pod 에 함께 뜰 수
+   * 있으므로 nowait.worker.* 가 아니라 nowait.reservation.worker.* 로 네임스페이스를 분리한다.
+   *   persist.success/failure        : Redis→DB 반영 성공/실패
+   *   dlq.in                         : dead-letter 유입
+   *   persist.lag                    : 예약 생성(createdAt)→DB 반영 지연 (histogram)
+   *   idempotent.skip                : 같은 reservationToken 이 이미 DB 에 있어(UNIQUE 충돌)
+   *                                    중복 INSERT 를 멱등 성공으로 처리한 횟수 (DLQ 회피)
+   *   recovered.inflight             : 재기동 시 in-flight 토큰을 pending 으로 복구한 횟수
+   *   recover.skipped.existing       : 이미 DB 에 저장돼 복구하지 않고 제거한 횟수
+   */
+  private Counter workerPersistSuccess;
+  private Counter workerPersistFailure;
+  private Counter workerDlqIn;
+  private Counter workerIdempotentSkip;
+  private Counter workerRecoveredInflight;
+  private Counter workerRecoverSkippedExisting;
+  private Timer persistLag;
+
   @PostConstruct
   void register() {
     meterRegistry.gauge("reservation.queue.pending", this,
@@ -53,7 +74,19 @@ public class ReservationMetrics {
     reservationSuccess = meterRegistry.counter("nowait.reservation.success");
     reservationFailure = meterRegistry.counter("nowait.reservation.failure");
 
-    log.info("ReservationMetrics registered: queue gauges + nowait reservation counters");
+    workerPersistSuccess = meterRegistry.counter("nowait.reservation.worker.persist.success");
+    workerPersistFailure = meterRegistry.counter("nowait.reservation.worker.persist.failure");
+    workerDlqIn = meterRegistry.counter("nowait.reservation.worker.dlq.in");
+    workerIdempotentSkip = meterRegistry.counter("nowait.reservation.worker.idempotent.skip");
+    workerRecoveredInflight = meterRegistry.counter("nowait.reservation.worker.recovered.inflight");
+    workerRecoverSkippedExisting =
+        meterRegistry.counter("nowait.reservation.worker.recover.skipped.existing");
+    persistLag = Timer.builder("nowait.reservation.worker.persist.lag")
+        .description("예약 Redis->DB 비동기 저장 지연")
+        .publishPercentileHistogram()
+        .register(meterRegistry);
+
+    log.info("ReservationMetrics registered: queue gauges + nowait reservation/worker counters");
   }
 
   public void created() {
@@ -70,6 +103,42 @@ public class ReservationMetrics {
   /* 비즈니스 예외가 아닌 예기치 못한 시스템 실패 */
   public void systemFailed() {
     reservationFailure.increment();
+  }
+
+  /* ===== Worker (reservation-worker Pod) ===== */
+
+  /* 저장 성공 — createdAt(epoch millis)로 Redis→DB 지연 기록 */
+  public void persistSucceeded(long createdAtMillis) {
+    workerPersistSuccess.increment();
+    if (createdAtMillis > 0) {
+      long lagMillis = System.currentTimeMillis() - createdAtMillis;
+      if (lagMillis >= 0) {
+        persistLag.record(Duration.ofMillis(lagMillis));
+      }
+    }
+  }
+
+  public void persistFailed() {
+    workerPersistFailure.increment();
+  }
+
+  public void deadLettered() {
+    workerDlqIn.increment();
+  }
+
+  /* 같은 reservationToken 이 이미 DB 에 존재 → 중복 INSERT 를 멱등 성공으로 처리(DLQ 회피) */
+  public void idempotentDuplicateSkipped() {
+    workerIdempotentSkip.increment();
+  }
+
+  /* 재기동 시 in-flight 토큰을 pending 으로 복구 */
+  public void recoveredInflight() {
+    workerRecoveredInflight.increment();
+  }
+
+  /* 이미 DB 에 저장된 토큰이라 복구하지 않고 processing 에서 제거 */
+  public void recoverSkippedExisting() {
+    workerRecoverSkippedExisting.increment();
   }
 
   private double safeLLen(String key) {
