@@ -9,7 +9,11 @@ spring:
     name: team6-nowait-app
 
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3306/nowait?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
+    # rewriteBatchedStatements=true: MySQL JDBC 가 배치 UPDATE/멀티행을 한 번의 왕복으로 묶어
+    #   보내도록 한다 (Worker 청크 배치의 UPDATE 효율에 필요).
+    #   ⚠️ dev/prod 는 DB_URL 을 환경변수로 주입하므로(시크릿), 운영 URL 에도 동일 파라미터를
+    #      반드시 포함시켜야 효과가 있다.
+    url: ${DB_URL:jdbc:mysql://localhost:3306/nowait?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&rewriteBatchedStatements=true}
     username: ${DB_USERNAME:nowait}
     password: ${DB_PASSWORD:nowait1234}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -23,6 +27,15 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
+        jdbc:
+          # Worker 청크 배치(saveAll)에서 UPDATE/INSERT 를 JDBC 배치로 묶는다.
+          # ⚠️ Waiting.id 가 GenerationType.IDENTITY 라 신규 INSERT 배치는 Hibernate 가
+          #    비활성화한다(건별 실행). UPDATE 는 order_updates 와 함께 배치된다.
+          #    핵심 이득은 "청크당 트랜잭션/커밋 1회"로 commit 오버헤드 감소.
+          batch_size: 50
+          batch_versioned_data: true
+        order_inserts: true
+        order_updates: true
     open-in-view: false
 
   flyway:
@@ -51,6 +64,15 @@ spring:
       password: ${REDIS_PASSWORD:}
       ssl:
         enabled: ${REDIS_SSL_ENABLED:false}
+
+# Worker(waiting-sync) 배치 처리 설정.
+#   config repo 가 deployment env 로 WAITING_WORKER_BATCH_SIZE / WAITING_WORKER_CHUNK_SIZE 를
+#   주입하면 아래 값이 채워진다. 미주입 시 기본값(50/25) 사용.
+worker:
+  waiting:
+    batch-size: ${WAITING_WORKER_BATCH_SIZE:50}
+    chunk-size: ${WAITING_WORKER_CHUNK_SIZE:25}
+    poll-interval-ms: ${WAITING_WORKER_POLL_INTERVAL_MS:500}
 
 jwt:
   secret: ${JWT_SECRET:local-dev-jwt-secret-key-must-be-at-least-32-bytes}

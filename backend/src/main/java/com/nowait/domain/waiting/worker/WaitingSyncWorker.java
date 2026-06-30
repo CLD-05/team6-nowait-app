@@ -3,6 +3,8 @@ package com.nowait.domain.waiting.worker;
 import com.nowait.domain.waiting.monitoring.WaitingMetrics;
 import com.nowait.domain.waiting.redis.WaitingRedisKeys;
 import jakarta.annotation.PostConstruct;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,9 +40,13 @@ public class WaitingSyncWorker {
   @Value("${worker.waiting.batch-size:50}")
   private int batchSize;
 
+  /* 한 번에 한 트랜잭션으로 묶어 처리할 청크 크기 (batchSize 를 이 단위로 분할) */
+  @Value("${worker.waiting.chunk-size:25}")
+  private int chunkSize;
+
   @PostConstruct
   void onStartup() {
-    log.info("WaitingSyncWorker activated. batchSize={}", batchSize);
+    log.info("WaitingSyncWorker activated. batchSize={}, chunkSize={}", batchSize, chunkSize);
     recoverInFlight();
   }
 
@@ -63,35 +69,80 @@ public class WaitingSyncWorker {
   /*
    * 주기적 폴링 — fixedDelay 로 이전 실행 종료 후 N ms 뒤 시작.
    *
-   * 한 틱당 batchSize 만큼만 처리 → 너무 오래 한 스레드 점유 방지.
-   * 큐가 비면 즉시 종료, 다음 틱 대기.
+   * 처리 흐름 (배치 우선, 실패 시 단건 폴백):
+   *   1. RPOPLPUSH 로 최대 batchSize 토큰을 pending-sync → processing 으로 원자 이동.
+   *   2. 이를 chunkSize 단위로 나눠 청크별로 handler.syncBatch 를 호출(청크당 트랜잭션 1회).
+   *   3. 청크 배치 성공 → 청크 전체를 processing 에서 ack(LREM).
+   *      청크 배치 실패 → 그 청크만 기존 단건 처리(handler.sync)로 폴백.
+   *
+   * ack(LREM)는 반드시 DB 영속화 성공 "이후"에만 수행한다.
+   * Worker 가 중간에 죽어도 processing 에 남은 토큰은 재기동 시 recoverInFlight 로 복구된다.
    */
   @Scheduled(fixedDelayString = "${worker.waiting.poll-interval-ms:500}")
   public void poll() {
-    int processed = 0;
+    List<String> popped = new ArrayList<>(batchSize);
     for (int i = 0; i < batchSize; i++) {
       String token = redis.opsForList().rightPopAndLeftPush(
           WaitingRedisKeys.PENDING_SYNC, WaitingRedisKeys.PROCESSING);
       if (token == null) break;
+      popped.add(token);
+    }
+    if (popped.isEmpty()) return;
 
+    int effectiveChunk = Math.max(1, chunkSize);
+    for (int start = 0; start < popped.size(); start += effectiveChunk) {
+      int end = Math.min(start + effectiveChunk, popped.size());
+      processChunk(popped.subList(start, end));
+    }
+    log.debug("Polled {} messages.", popped.size());
+  }
+
+  /*
+   * 청크 1개 처리 — 배치 우선, 실패 시 단건 폴백.
+   * 배치가 성공하면 청크 전체를 ack 하고, 예외가 나면 트랜잭션 롤백 후 단건으로 재처리한다.
+   */
+  private void processChunk(List<String> chunk) {
+    try {
+      handler.syncBatch(chunk);
+      for (String token : chunk) {
+        ack(token);
+      }
+      waitingMetrics.batchProcessed(chunk.size());
+    } catch (Exception e) {
+      log.warn("Batch chunk failed ({} tokens). Falling back to single-token. cause={}",
+          chunk.size(), e.toString());
+      waitingMetrics.batchFellBack();
+      fallbackSingle(chunk);
+    }
+  }
+
+  /*
+   * 단건 폴백 — 청크 배치가 실패했을 때만 호출된다.
+   * 성공 토큰은 정상 ack, 끝내 실패한 토큰만 기존 정책대로 dead-letter 로 보낸다.
+   */
+  private void fallbackSingle(List<String> chunk) {
+    for (String token : chunk) {
       try {
         boolean ok = handler.sync(token);
         if (ok) {
-          redis.opsForList().remove(WaitingRedisKeys.PROCESSING, 1, token);
+          ack(token);
         } else {
           waitingMetrics.persistFailed();
-          moveToDeadLetter(token, "handler returned false");
+          waitingMetrics.batchFailed();
+          moveToDeadLetter(token, "handler returned false (fallback)");
         }
-        processed++;
       } catch (Exception e) {
-        log.error("Failed to sync token={}. Moving to dead-letter.", token, e);
+        log.error("Fallback sync failed token={}. Moving to dead-letter.", token, e);
         waitingMetrics.persistFailed();
+        waitingMetrics.batchFailed();
         moveToDeadLetter(token, e.getClass().getSimpleName() + ": " + e.getMessage());
       }
     }
-    if (processed > 0) {
-      log.debug("Polled {} messages.", processed);
-    }
+  }
+
+  /* DB 영속화 성공 후 processing 큐에서 토큰 1건 제거 (ack) */
+  private void ack(String token) {
+    redis.opsForList().remove(WaitingRedisKeys.PROCESSING, 1, token);
   }
 
   private void moveToDeadLetter(String token, String reason) {

@@ -57,6 +57,9 @@ public class WaitingMetrics {
   private Counter workerPersistSuccess;
   private Counter workerPersistFailure;
   private Counter dlqIn;
+  private Counter workerBatchProcessed;
+  private Counter workerBatchFallback;
+  private Counter workerBatchFailed;
   private Timer persistLag;
 
   @PostConstruct
@@ -80,6 +83,13 @@ public class WaitingMetrics {
     workerPersistSuccess = meterRegistry.counter("nowait.worker.persist.success");
     workerPersistFailure = meterRegistry.counter("nowait.worker.persist.failure");
     dlqIn = meterRegistry.counter("nowait.worker.dlq.in");
+    // Worker 청크 배치 처리 전/후 비교용 (low-cardinality, 라벨 없음)
+    //   batch.processed : 청크 배치 경로로 성공 반영된 토큰 수
+    //   batch.fallback  : 배치 실패로 단건 처리로 폴백된 청크 수
+    //   batch.failed    : 폴백에서도 끝내 실패해 dead-letter 된 토큰 수
+    workerBatchProcessed = meterRegistry.counter("nowait.worker.batch.processed");
+    workerBatchFallback = meterRegistry.counter("nowait.worker.batch.fallback");
+    workerBatchFailed = meterRegistry.counter("nowait.worker.batch.failed");
     persistLag = Timer.builder("nowait.worker.persist.lag")
         .description("Redis->DB 비동기 저장 지연")
         .publishPercentileHistogram()
@@ -143,6 +153,23 @@ public class WaitingMetrics {
 
   public void deadLettered() {
     dlqIn.increment();
+  }
+
+  /* 청크 배치 경로로 성공 반영된 토큰 수 (한 청크 성공 시 청크 크기만큼 증가) */
+  public void batchProcessed(int count) {
+    if (count > 0) {
+      workerBatchProcessed.increment(count);
+    }
+  }
+
+  /* 배치 실패로 단건 처리로 폴백된 청크 1건 */
+  public void batchFellBack() {
+    workerBatchFallback.increment();
+  }
+
+  /* 폴백에서도 끝내 실패해 dead-letter 된 토큰 1건 */
+  public void batchFailed() {
+    workerBatchFailed.increment();
   }
 
   /* ===== gauge 헬퍼 ===== */
