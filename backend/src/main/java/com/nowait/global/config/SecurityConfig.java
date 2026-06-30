@@ -49,6 +49,7 @@ public class SecurityConfig {
                             "/api/v1/auth/login",
                             "/api/v1/auth/refresh",
                             "/api/v1/auth/logout",
+                            "/api/global/test/reset",
                             "/actuator/health",
                             "/actuator/health/**",
                             // Prometheus가 클러스터 내부에서 스크랩하는 메트릭 엔드포인트.
