@@ -87,6 +87,28 @@ public class Slot extends BaseTimeEntity {
         this.remainCount++;
     }
 
+    /*
+     * Worker sync 재조정 전용 — 경계값에서 예외를 던지지 않고 멱등하게 조정한다.
+     *
+     * ⚠️ decrease()/increase() 는 API 예약/취소 경로에서 정원 위반을 막기 위해 예외를
+     *    던지지만, Worker 는 Redis(정합성 소스)를 DB 에 반영하는 "재조정" 경로다.
+     *    재조정 중 예외를 던지면 그 호출이 @Transactional(REQUIRED) 로 상위 트랜잭션에
+     *    합류한 상태라 공유 트랜잭션이 rollback-only 로 마킹되고, 예외를 catch 해도
+     *    상위 커밋이 UnexpectedRollbackException 으로 실패해 정상 토큰까지 DLQ 로 간다.
+     *    따라서 이미 0/총원 경계에 도달했으면 조용히 유지(clamp)한다.
+     */
+    public void decreaseForSync() {
+        if (this.remainCount > 0) {
+            this.remainCount--;
+        }
+    }
+
+    public void increaseForSync() {
+        if (this.remainCount < this.totalCount) {
+            this.remainCount++;
+        }
+    }
+
     public boolean isAvailable() {
         return this.remainCount > 0;
     }

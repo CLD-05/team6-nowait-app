@@ -79,6 +79,8 @@ worker:
     batch-size: ${RESERVATION_WORKER_BATCH_SIZE:50}
     chunk-size: ${RESERVATION_WORKER_CHUNK_SIZE:25}
     poll-interval-ms: ${RESERVATION_WORKER_POLL_INTERVAL_MS:500}
+    # 일시적 실패(락 타임아웃/교착/rollback)를 DLQ 대신 재시도 큐로 되돌릴 최대 횟수
+    max-retry-attempts: ${RESERVATION_WORKER_MAX_RETRY:5}
 
 jwt:
   secret: ${JWT_SECRET:local-dev-jwt-secret-key-must-be-at-least-32-bytes}

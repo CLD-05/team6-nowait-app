@@ -77,10 +77,10 @@ class ReservationSyncHandlerBatchTest {
 
     handler.syncBatch(List.of("t1", "t2"));
 
-    // 핵심: slot 락은 항상 slotId 오름차순으로 획득되어야 한다 (decrease(2) → decrease(5))
+    // 핵심: slot 락은 항상 slotId 오름차순으로 획득되어야 한다 (decreaseForSync(2) → decreaseForSync(5))
     InOrder order = inOrder(slotService);
-    order.verify(slotService).decrease(2L);
-    order.verify(slotService).decrease(5L);
+    order.verify(slotService).decreaseForSync(2L);
+    order.verify(slotService).decreaseForSync(5L);
     verify(reservationRepository, times(2)).save(any());
   }
 
@@ -98,7 +98,7 @@ class ReservationSyncHandlerBatchTest {
 
     verify(reservationRedis, times(1)).findByToken("t1");
     verify(reservationRepository, times(1)).save(any());
-    verify(slotService, times(1)).decrease(3L);
+    verify(slotService, times(1)).decreaseForSync(3L);
   }
 
   @Test
@@ -109,7 +109,7 @@ class ReservationSyncHandlerBatchTest {
     handler.syncBatch(List.of("t1"));
 
     verify(reservationRepository, never()).save(any());
-    verify(slotService, never()).decrease(anyLong());
+    verify(slotService, never()).decreaseForSync(anyLong());
     verify(reservationMetrics, never()).persistSucceeded(anyLong());
   }
 }
