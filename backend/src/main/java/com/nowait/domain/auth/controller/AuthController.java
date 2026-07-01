@@ -112,7 +112,8 @@ public class AuthController {
 
   private String readRefreshCookie(HttpServletRequest request) {
     Cookie[] cookies = request.getCookies();
-    if (cookies == null) return null;
+    if (cookies == null)
+      return null;
     for (Cookie c : cookies) {
       if (REFRESH_COOKIE.equals(c.getName())) {
         return c.getValue();
@@ -122,7 +123,8 @@ public class AuthController {
   }
 
   private String stripBearer(String authorization) {
-    if (authorization == null) return null;
+    if (authorization == null)
+      return null;
     String prefix = "Bearer ";
     if (authorization.startsWith(prefix)) {
       return authorization.substring(prefix.length());
