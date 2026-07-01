@@ -93,8 +93,24 @@ public class ReservationMetrics {
     reservationSuccess.increment();
   }
 
-  /* BusinessException 발생 시 — 시스템 오류만 실패로 집계 */
+  /*
+   * BusinessException 발생 시 호출.
+   *
+   * nowait_reservation_rejected_total{reason="<ERROR_CODE>"}:
+   *   k6 가 보는 예약 생성 4xx 응답을 "백엔드 비즈니스 거절 사유"별로 분해하기 위한 태그 카운터.
+   *   슬롯 만석(SLOT_FULL)/중복(DUPLICATE_RESERVATION)/영업시간 외(NOT_OPERATING_TIME)/
+   *   인원 범위(INVALID_MIN/MAX_HEADCOUNT) 등 모든 거절을 reason 라벨로 분리해
+   *   "예약 4xx 가 왜 발생하는지" Grafana 에서 설명 가능하게 한다.
+   *   ⚠️ reason 라벨은 반드시 ErrorCode enum(code.name())만 사용한다.
+   *      자유 형식 예외 메시지를 라벨로 쓰면 Prometheus 라벨 카디널리티가 폭발한다.
+   *
+   * 기존 동작 유지: 시스템 오류(INTERNAL_SERVER_ERROR)만 reservation_failure 로 집계한다
+   *   (영업시간/정원/휴무일 등 정상 비즈니스 거절은 실패율 SLI 에 포함하지 않음).
+   */
   public void rejected(ErrorCode code) {
+    // (신규) 모든 비즈니스 거절을 사유별로 집계 — k6 4xx 분해용
+    meterRegistry.counter("nowait.reservation.rejected", "reason", code.name()).increment();
+
     if (code == ErrorCode.INTERNAL_SERVER_ERROR) {
       reservationFailure.increment();
     }
