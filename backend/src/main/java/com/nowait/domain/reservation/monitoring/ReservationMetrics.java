@@ -61,6 +61,7 @@ public class ReservationMetrics {
   private Counter workerBatchProcessed;
   private Counter workerBatchFallback;
   private Counter workerBatchFailed;
+  private Counter workerRetryScheduled;
   private Timer persistLag;
 
   @PostConstruct
@@ -91,6 +92,8 @@ public class ReservationMetrics {
     workerBatchProcessed = meterRegistry.counter("nowait.reservation.worker.batch.processed");
     workerBatchFallback = meterRegistry.counter("nowait.reservation.worker.batch.fallback");
     workerBatchFailed = meterRegistry.counter("nowait.reservation.worker.batch.failed");
+    // 일시적 실패(락 타임아웃/교착/rollback)로 DLQ 대신 재시도 큐로 되돌린 토큰 수
+    workerRetryScheduled = meterRegistry.counter("nowait.reservation.worker.retry.scheduled");
     persistLag = Timer.builder("nowait.reservation.worker.persist.lag")
         .description("예약 Redis->DB 비동기 저장 지연")
         .publishPercentileHistogram()
@@ -166,6 +169,11 @@ public class ReservationMetrics {
   /* 폴백에서도 끝내 실패해 dead-letter 된 토큰 1건 */
   public void batchFailed() {
     workerBatchFailed.increment();
+  }
+
+  /* 일시적 실패로 DLQ 대신 재시도 큐(pending-sync)로 되돌린 토큰 1건 */
+  public void retryScheduled() {
+    workerRetryScheduled.increment();
   }
 
   private double safeLLen(String key) {

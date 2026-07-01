@@ -3,6 +3,7 @@ package com.nowait.domain.reservation.worker;
 import com.nowait.domain.reservation.monitoring.ReservationMetrics;
 import com.nowait.domain.reservation.redis.ReservationRedisKeys;
 import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -10,9 +11,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.TransactionSystemException;
+import org.springframework.transaction.UnexpectedRollbackException;
 
 /*
  * Worker — reservation:pending-sync 큐를 폴링해서 DB 반영.
@@ -45,6 +49,16 @@ public class ReservationSyncWorker {
    */
   @Value("${worker.reservation.chunk-size:25}")
   private int chunkSize;
+
+  /*
+   * 일시적 실패(락 타임아웃/교착/rollback) 시 DLQ 대신 재시도 큐로 되돌릴 최대 횟수.
+   * 이 횟수를 초과하면 DLQ 로 넘긴다.
+   */
+  @Value("${worker.reservation.max-retry-attempts:5}")
+  private int maxRetryAttempts;
+
+  /* 토큰별 재시도 카운터 TTL — 성공/DLQ 후 남은 카운터를 자동 소멸시켜 누수 방지 */
+  private static final Duration RETRY_COUNTER_TTL = Duration.ofMinutes(30);
 
   @PostConstruct
   void onStartup() {
@@ -157,6 +171,7 @@ public class ReservationSyncWorker {
    *   - 그 외(진짜 저장 실패, 위반처럼 보이나 row 없음) → 기존 retry/DLQ 정책
    */
   private void finishFailure(String token, Exception cause, String reason) {
+    /* 1) 중복키 위반 + 실제 row 존재 → 이미 저장됨. 멱등 성공(ack). */
     if (cause != null && isDuplicateKeyViolation(cause) && handler.existsByReservationToken(token)) {
       reservationMetrics.idempotentDuplicateSkipped();
       log.warn("Reservation token already persisted. Treating as idempotent success. token={}", token);
@@ -164,6 +179,16 @@ public class ReservationSyncWorker {
       return;
     }
 
+    /*
+     * 2) 일시적 오류(락 타임아웃/교착/rollback) → 임계치 이내면 재시도 큐로 되돌린다.
+     *    고부하(800 VU) hot 슬롯 경합에서 나는 락 대기/롤백은 재처리하면 대부분 성공하므로
+     *    곧바로 DLQ 로 보내지 않는다.
+     */
+    if (cause != null && isTransient(cause) && scheduleRetry(token, reason)) {
+      return;
+    }
+
+    /* 3) 그 외(진짜 영속 실패) 또는 재시도 소진 → DLQ */
     if (cause != null) {
       log.error("Failed to sync reservation. token={}. Moving to dead-letter.", token, cause);
     } else {
@@ -172,6 +197,63 @@ public class ReservationSyncWorker {
     reservationMetrics.persistFailed();
     reservationMetrics.batchFailed();
     moveToDeadLetter(token, reason);
+  }
+
+  /*
+   * 일시적 실패를 재시도 큐(pending-sync)로 되돌린다.
+   * 토큰별 INCR 카운터로 시도 횟수를 세어 maxRetryAttempts 이내면 재시도(true),
+   * 초과하면 카운터를 정리하고 false 를 반환해 호출자가 DLQ 로 넘기게 한다.
+   */
+  private boolean scheduleRetry(String token, String reason) {
+    String key = ReservationRedisKeys.syncAttempts(token);
+    Long attempts = redis.opsForValue().increment(key);
+    redis.expire(key, RETRY_COUNTER_TTL);
+    if (attempts != null && attempts <= maxRetryAttempts) {
+      reservationMetrics.retryScheduled();
+      log.warn("Transient reservation sync failure. Requeue for retry. token={} attempt={}/{} reason={}",
+          token, attempts, maxRetryAttempts, reason);
+      requeueForRetry(token);
+      return true;
+    }
+    log.error("Transient reservation sync failure exceeded max retries ({}). token={} attempts={}",
+        maxRetryAttempts, token, attempts);
+    redis.delete(key);
+    return false;
+  }
+
+  /* processing 에서 제거하고 pending-sync 로 되돌려 다음 poll 에서 재처리되게 한다. */
+  private void requeueForRetry(String token) {
+    redis.opsForList().remove(ReservationRedisKeys.PROCESSING, 1, token);
+    redis.opsForList().leftPush(ReservationRedisKeys.PENDING_SYNC, token);
+  }
+
+  /*
+   * 재시도 가치가 있는 "일시적" 오류인지 판정한다.
+   *   - UnexpectedRollbackException : 참여 트랜잭션이 rollback-only 로 마킹된 뒤 커밋 실패
+   *   - TransactionSystemException  : 커밋/롤백 처리 중 시스템 오류
+   *   - TransientDataAccessException: 락 타임아웃/교착/직렬화 실패 계열
+   *     (Pessimistic/CannotAcquireLock/QueryTimeout 모두 이 하위 타입)
+   *   - 메시지에 deadlock / lock wait timeout 등 흔적이 있는 경우
+   */
+  private boolean isTransient(Throwable e) {
+    for (Throwable t = e; t != null; t = t.getCause()) {
+      if (t instanceof UnexpectedRollbackException
+          || t instanceof TransactionSystemException
+          || t instanceof TransientDataAccessException) {
+        return true;
+      }
+      String msg = t.getMessage();
+      if (msg != null) {
+        String low = msg.toLowerCase();
+        if (low.contains("deadlock")
+            || low.contains("lock wait timeout")
+            || low.contains("could not serialize")
+            || low.contains("rolled back")) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /*

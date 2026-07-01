@@ -152,6 +152,32 @@ public class SlotService {
     }
 
     /*
+     * Worker sync 재조정 전용 차감/복구 — 경계값에서 예외를 던지지 않는다(clamp).
+     *
+     * decrease()/increase() 와 락(PESSIMISTIC_WRITE)·캐시 evict 는 동일하지만, 정원
+     * 경계(0/총원)에서 BusinessException 을 던지지 않는다. Worker 핸들러의 sync 트랜잭션에
+     * REQUIRED 로 합류하므로, 여기서 예외를 던지면 공유 트랜잭션이 rollback-only 로
+     * 마킹돼 상위 커밋이 UnexpectedRollbackException 으로 실패한다(→ 정상 토큰까지 DLQ).
+     * 재조정 경로는 Redis 를 정합성 소스로 삼아 경계에서 조용히 유지하는 것이 안전하다.
+     * (슬롯 자체가 없는 경우는 진짜 데이터 오류이므로 그대로 예외를 전파한다.)
+     */
+    @Transactional
+    public void decreaseForSync(Long slotId) {
+        Slot slot = slotRepository.findByIdWithLock(slotId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.SLOT_NOT_FOUND));
+        slot.decreaseForSync();
+        evictSlotCaches(slot);
+    }
+
+    @Transactional
+    public void increaseForSync(Long slotId) {
+        Slot slot = slotRepository.findByIdWithLock(slotId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.SLOT_NOT_FOUND));
+        slot.increaseForSync();
+        evictSlotCaches(slot);
+    }
+
+    /*
      * remainCount가 바뀐 슬롯의 캐시(목록/단건)를 무효화한다.
      * cacheManager가 RedisCacheManager이므로 한 Pod에서 evict하면 Redis 자체에서 키가
      * 지워져 모든 API/Worker Pod에 즉시 반영된다 (로컬 메모리 캐시가 아니라 EKS 멀티 Pod에서도 안전).
