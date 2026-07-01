@@ -80,4 +80,13 @@ public final class ReservationRedisKeys {
   public static final String PENDING_SYNC = PREFIX + "reservation:pending-sync";
   public static final String PROCESSING = PREFIX + "reservation:processing";
   public static final String DEAD_LETTER = PREFIX + "reservation:dead-letter";
+
+  /*
+   * 토큰별 sync 재시도 횟수 카운터 (String, INCR + TTL).
+   * 일시적 실패(락 타임아웃/교착/rollback)로 재시도할 때마다 증가시키고, 임계치를 넘으면
+   * DLQ 로 보낸다. 성공 여부와 무관하게 TTL 로 자동 소멸시켜 카운터 누수를 막는다.
+   */
+  public static String syncAttempts(String token) {
+    return PREFIX + "reservation:sync-attempts:" + token;
+  }
 }

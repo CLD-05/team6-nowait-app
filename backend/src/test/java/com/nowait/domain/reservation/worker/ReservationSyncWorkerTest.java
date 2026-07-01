@@ -28,7 +28,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.UnexpectedRollbackException;
 
 /**
  * ReservationSyncWorker — 청크 배치 + 단건 폴백 + 멱등성(중복 토큰 DLQ 회피) + recoverInFlight 검증.
@@ -38,6 +40,7 @@ class ReservationSyncWorkerTest {
 
   @Mock StringRedisTemplate redis;
   @Mock ListOperations<String, String> listOps;
+  @Mock ValueOperations<String, String> valueOps;
   @Mock ReservationSyncHandler handler;
   @Mock ReservationMetrics reservationMetrics;
 
@@ -47,6 +50,7 @@ class ReservationSyncWorkerTest {
   void setUp() {
     ReflectionTestUtils.setField(worker, "batchSize", 50);
     ReflectionTestUtils.setField(worker, "chunkSize", 2);
+    ReflectionTestUtils.setField(worker, "maxRetryAttempts", 3);
     when(redis.opsForList()).thenReturn(listOps);
   }
 
@@ -158,6 +162,41 @@ class ReservationSyncWorkerTest {
     verify(handler, never()).existsByReservationToken(anyString());
     verify(reservationMetrics).deadLettered();
     verify(listOps).leftPush(eq(ReservationRedisKeys.DEAD_LETTER), startsWith("t1|"));
+  }
+
+  @Test
+  @DisplayName("폴백 중 일시적 오류(rollback) → DLQ 대신 재시도 큐(pending-sync)로 되돌린다")
+  void fallbackTransient_requeuesForRetry() {
+    givenPopped("t1");
+    doThrow(new RuntimeException("boom")).when(handler).syncBatch(any());
+    when(handler.sync("t1")).thenThrow(new UnexpectedRollbackException("Transaction silently rolled back"));
+    when(redis.opsForValue()).thenReturn(valueOps);
+    when(valueOps.increment(anyString())).thenReturn(1L); // 1회차 (<= maxRetryAttempts)
+
+    worker.poll();
+
+    verify(reservationMetrics).retryScheduled();
+    verify(listOps).remove(ReservationRedisKeys.PROCESSING, 1, "t1");
+    verify(listOps).leftPush(ReservationRedisKeys.PENDING_SYNC, "t1");
+    verify(listOps, never()).leftPush(eq(ReservationRedisKeys.DEAD_LETTER), anyString());
+    verify(reservationMetrics, never()).deadLettered();
+  }
+
+  @Test
+  @DisplayName("일시적 오류가 최대 재시도(maxRetryAttempts)를 초과하면 DLQ 로 보낸다")
+  void fallbackTransientExceedsMaxRetries_deadLetters() {
+    givenPopped("t1");
+    doThrow(new RuntimeException("boom")).when(handler).syncBatch(any());
+    when(handler.sync("t1")).thenThrow(new UnexpectedRollbackException("Transaction silently rolled back"));
+    when(redis.opsForValue()).thenReturn(valueOps);
+    when(valueOps.increment(anyString())).thenReturn(4L); // maxRetryAttempts(3) 초과
+
+    worker.poll();
+
+    verify(reservationMetrics, never()).retryScheduled();
+    verify(reservationMetrics).deadLettered();
+    verify(listOps).leftPush(eq(ReservationRedisKeys.DEAD_LETTER), startsWith("t1|"));
+    verify(listOps, never()).leftPush(eq(ReservationRedisKeys.PENDING_SYNC), anyString());
   }
 
   @Test

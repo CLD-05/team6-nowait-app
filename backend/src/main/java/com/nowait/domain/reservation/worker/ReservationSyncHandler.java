@@ -102,15 +102,17 @@ public class ReservationSyncHandler {
    * 청크 배치 동기화 — 청크 내 토큰들을 "한 트랜잭션"으로 처리한다.
    *
    * ⚠️ 슬롯 PESSIMISTIC_WRITE 락 교착 방지:
-   *   applyInsert/applyUpdate 는 slotService.decrease/increase 로 슬롯 행 락을 잡는다.
-   *   한 청크가 여러 슬롯을 건드리면 동시 청크 트랜잭션들이 서로 다른 순서로 락을 잡아
-   *   deadlock 이 날 수 있다. 따라서 토큰을 slotId 오름차순으로 정렬해 "모든 배치
+   *   applyInsert/applyUpdate 는 slotService.decreaseForSync/increaseForSync 로 슬롯 행
+   *   락을 잡는다. 한 청크가 여러 슬롯을 건드리면 동시 청크 트랜잭션들이 서로 다른 순서로
+   *   락을 잡아 deadlock 이 날 수 있다. 따라서 토큰을 slotId 오름차순으로 정렬해 "모든 배치
    *   트랜잭션이 동일한 순서로 슬롯 락을 획득"하도록 보장한다.
    *
    * 멱등/안전:
    *   - 토큰 dedup, findByReservationTokenIn 일괄 조회로 upsert (중복 INSERT 없음).
    *   - 슬롯 차감/복구가 같은 트랜잭션에 묶이므로(REQUIRED 전파) 청크 실패 시 함께 롤백.
-   *   - 예외 발생 시 트랜잭션 전체 롤백 → 호출자(Worker)가 단건 폴백으로 재처리.
+   *   - 정원 경계(0/총원)는 *ForSync 가 clamp 처리(예외 X)라 공유 트랜잭션을 rollback-only
+   *     로 오염시키지 않는다. 진짜 오류(락 타임아웃 등)만 예외로 전파돼 트랜잭션 전체가
+   *     깨끗이 롤백 → 호출자(Worker)가 단건 폴백/재시도로 재처리한다.
    *
    * ⚠️ Reservation.id 는 IDENTITY 라 Hibernate 신규 INSERT 배치는 동작하지 않는다(건별 실행).
    *    핵심 이득은 "청크당 트랜잭션/커밋 1회"로 commit 오버헤드 감소. 다만 슬롯 락을 청크
@@ -188,7 +190,7 @@ public class ReservationSyncHandler {
 
     /* 슬롯 점유: PENDING/CONFIRMED/VISITED/NO_SHOW 차감. CANCELLED/REJECTED 는 미차감 (이미 복구됨) */
     if (status != ReservationStatus.CANCELLED && status != ReservationStatus.REJECTED) {
-      decreaseSlotSafely(slot);
+      slotService.decreaseForSync(slot.getId());
     }
   }
 
@@ -209,36 +211,26 @@ public class ReservationSyncHandler {
     boolean wasActive = prev == ReservationStatus.CONFIRMED || prev == ReservationStatus.PENDING;
     boolean isFreed = next == ReservationStatus.CANCELLED || next == ReservationStatus.REJECTED;
     if (wasActive && isFreed) {
-      increaseSlotSafely(existing.getSlot());
+      slotService.increaseForSync(existing.getSlot().getId());
     }
   }
 
   /*
-   * 슬롯 정원 차감 — 0 이하 방어 (Redis 가 이미 검증했지만 DB 안전망).
+   * 슬롯 정원 차감/복구는 slotService.decreaseForSync()/increaseForSync() 로 처리한다.
    *
-   * Worker는 여러 Pod/스레드가 서로 다른 token을 동시에 처리할 수 있는데, 같은 slot에
-   * 대한 두 건이 동시에 들어오면 락 없이 읽은 Slot을 그대로 mutate할 경우 두 트랜잭션이
-   * 모두 같은 옛 remainCount를 읽고 같은 값으로 갱신해버리는 lost update가 날 수 있다.
-   * SlotService.decrease()가 PESSIMISTIC_WRITE 조회로 행 락을 건 뒤 갱신하고,
-   * remainCount가 반영된 slot/slot_detail 캐시를 evict까지 해 준다 (Redis 캐시라
-   * EKS 멀티 Pod 환경에서도 즉시 전파됨).
+   * ⚠️ 예외를 catch 로 삼키지 않는다. 과거에는 decrease()/increase() 를 try/catch 로
+   *    감쌌으나, 이 메서드들은 @Transactional(REQUIRED) 로 sync 트랜잭션에 합류하므로
+   *    정원 경계에서 BusinessException(SLOT_FULL/SLOT_REMAIN_INVALID) 을 던지면 공유
+   *    트랜잭션이 rollback-only 로 마킹된다. 예외를 삼켜도 플래그는 남아 상위 커밋이
+   *    UnexpectedRollbackException 으로 실패 → 청크의 정상 토큰까지 DLQ 로 갔다.
+   *    → *ForSync 변형이 경계에서 clamp(예외 X) 하므로 삼킬 필요가 없어졌고, 진짜
+   *      일시적 오류(락 타임아웃/교착)는 그대로 전파돼 트랜잭션이 깨끗이 롤백되고
+   *      Worker 가 단건 폴백/재시도로 처리한다.
+   *
+   * 동시성: decreaseForSync/increaseForSync 는 PESSIMISTIC_WRITE 조회로 슬롯 행 락을
+   *    건 뒤 갱신해 lost update 를 막고, slot/slot_detail 캐시를 evict 한다(Redis 캐시라
+   *    EKS 멀티 Pod 에서도 즉시 전파).
    */
-  private void decreaseSlotSafely(Slot slot) {
-    try {
-      slotService.decrease(slot.getId());
-    } catch (Exception e) {
-      log.warn("Failed to decrease slot. slotId={} reason={}", slot.getId(), e.getMessage());
-    }
-  }
-
-  /* 슬롯 정원 복구 — totalCount 초과 방어. 락/캐시 evict 필요성은 decreaseSlotSafely와 동일. */
-  private void increaseSlotSafely(Slot slot) {
-    try {
-      slotService.increase(slot.getId());
-    } catch (Exception e) {
-      log.warn("Failed to increase slot. slotId={} reason={}", slot.getId(), e.getMessage());
-    }
-  }
 
   private static LocalDateTime toLdtNullable(Long millis) {
     if (millis == null) return null;
