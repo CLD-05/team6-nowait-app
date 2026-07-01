@@ -3,6 +3,8 @@ package com.nowait.domain.reservation.worker;
 import com.nowait.domain.reservation.monitoring.ReservationMetrics;
 import com.nowait.domain.reservation.redis.ReservationRedisKeys;
 import jakarta.annotation.PostConstruct;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,9 +38,17 @@ public class ReservationSyncWorker {
   @Value("${worker.reservation.batch-size:50}")
   private int batchSize;
 
+  /*
+   * 한 트랜잭션으로 묶어 처리할 청크 크기 (batchSize 를 이 단위로 분할).
+   * ⚠️ 예약 워커는 슬롯 PESSIMISTIC_WRITE 락을 청크 동안 길게 쥐므로, hot 슬롯
+   *    경합이 크면 이 값을 작게(예: 5~10) 두는 것이 안전하다.
+   */
+  @Value("${worker.reservation.chunk-size:25}")
+  private int chunkSize;
+
   @PostConstruct
   void onStartup() {
-    log.info("ReservationSyncWorker activated. batchSize={}", batchSize);
+    log.info("ReservationSyncWorker activated. batchSize={}, chunkSize={}", batchSize, chunkSize);
     recoverInFlight();
   }
 
@@ -70,29 +80,67 @@ public class ReservationSyncWorker {
     }
   }
 
-  /* 주기적 폴링 — fixedDelay 로 이전 실행 종료 후 N ms 뒤 시작 */
+  /*
+   * 주기적 폴링 — 배치 우선, 실패 시 단건 폴백.
+   *   1. RPOPLPUSH 로 최대 batchSize 토큰을 pending-sync → processing 으로 원자 이동.
+   *   2. chunkSize 단위로 나눠 청크별 handler.syncBatch 호출(청크당 트랜잭션 1회).
+   *   3. 청크 성공 → 청크 전체 ack(LREM). 실패 → 그 청크만 단건(sync)으로 폴백.
+   * ack(LREM)는 반드시 DB 영속화 성공 이후에만 수행한다.
+   */
   @Scheduled(fixedDelayString = "${worker.reservation.poll-interval-ms:500}")
   public void poll() {
-    int processed = 0;
+    List<String> popped = new ArrayList<>(batchSize);
     for (int i = 0; i < batchSize; i++) {
       String token = redis.opsForList().rightPopAndLeftPush(
           ReservationRedisKeys.PENDING_SYNC, ReservationRedisKeys.PROCESSING);
       if (token == null) break;
+      popped.add(token);
+    }
+    if (popped.isEmpty()) return;
 
+    int effectiveChunk = Math.max(1, chunkSize);
+    for (int start = 0; start < popped.size(); start += effectiveChunk) {
+      int end = Math.min(start + effectiveChunk, popped.size());
+      processChunk(popped.subList(start, end));
+    }
+    log.debug("Polled {} reservation messages.", popped.size());
+  }
+
+  /*
+   * 청크 1개 처리 — 배치 우선, 실패 시 단건 폴백.
+   * 배치 성공 시 청크 전체를 ack 하고, 예외가 나면 트랜잭션 롤백 후 단건으로 재처리한다.
+   */
+  private void processChunk(List<String> chunk) {
+    try {
+      handler.syncBatch(chunk);
+      for (String token : chunk) {
+        ack(token);
+      }
+      reservationMetrics.batchProcessed(chunk.size());
+    } catch (Exception e) {
+      log.warn("Reservation batch chunk failed ({} tokens). Falling back to single-token. cause={}",
+          chunk.size(), e.toString());
+      reservationMetrics.batchFellBack();
+      fallbackSingle(chunk);
+    }
+  }
+
+  /*
+   * 단건 폴백 — 청크 배치가 실패했을 때만 호출된다.
+   * 성공 토큰은 정상 ack, 실패 토큰은 finishFailure 가 멱등 성공/DLQ 를 판정한다.
+   */
+  private void fallbackSingle(List<String> chunk) {
+    for (String token : chunk) {
       try {
         boolean ok = handler.sync(token);
         if (ok) {
           ack(token);
         } else {
-          finishFailure(token, null, "handler returned false");
+          finishFailure(token, null, "handler returned false (fallback)");
         }
       } catch (Exception e) {
         finishFailure(token, e, e.getClass().getSimpleName() + ": " + e.getMessage());
       }
-      processed++;
-    }
-    if (processed > 0) {
-      log.debug("Polled {} reservation messages.", processed);
     }
   }
 
@@ -122,6 +170,7 @@ public class ReservationSyncWorker {
       log.error("Reservation sync returned failure token={}. Moving to dead-letter.", token);
     }
     reservationMetrics.persistFailed();
+    reservationMetrics.batchFailed();
     moveToDeadLetter(token, reason);
   }
 

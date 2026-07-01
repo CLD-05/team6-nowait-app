@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,6 +20,9 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
 
     // Worker(멱등성): UNIQUE 충돌/복구 시 해당 token 이 이미 DB 에 저장됐는지 확인
     boolean existsByReservationToken(String reservationToken);
+
+    // Worker(배치): 청크의 토큰들에 대한 기존 행을 한 번의 쿼리로 조회 (N+1 회피)
+    List<Reservation> findByReservationTokenIn(Collection<String> reservationTokens);
 
     // 취소/노쇼 내역 삭제용 — 본인 소유 확인
     @Query("SELECT r FROM Reservation r WHERE r.reservationToken = :token AND r.user.id = :userId")
