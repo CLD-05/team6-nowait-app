@@ -73,6 +73,12 @@ worker:
     batch-size: ${WAITING_WORKER_BATCH_SIZE:50}
     chunk-size: ${WAITING_WORKER_CHUNK_SIZE:25}
     poll-interval-ms: ${WAITING_WORKER_POLL_INTERVAL_MS:500}
+  # 예약 워커 청크 배치 처리. 예약은 슬롯 PESSIMISTIC_WRITE 락을 청크 동안 길게 쥐므로,
+  # hot 슬롯 경합이 크면 RESERVATION_WORKER_CHUNK_SIZE 를 작게(5~10) 낮추는 것이 안전하다.
+  reservation:
+    batch-size: ${RESERVATION_WORKER_BATCH_SIZE:50}
+    chunk-size: ${RESERVATION_WORKER_CHUNK_SIZE:25}
+    poll-interval-ms: ${RESERVATION_WORKER_POLL_INTERVAL_MS:500}
 
 jwt:
   secret: ${JWT_SECRET:local-dev-jwt-secret-key-must-be-at-least-32-bytes}

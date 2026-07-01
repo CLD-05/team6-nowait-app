@@ -22,7 +22,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /*
  * Worker 핸들러 — token 1건의 Redis 상태를 DB 에 멱등하게 반영한다.
@@ -91,6 +97,71 @@ public class ReservationSyncHandler {
     log.debug("Synced. token={} status={}", token, data.status());
     return true;
   }
+
+  /*
+   * 청크 배치 동기화 — 청크 내 토큰들을 "한 트랜잭션"으로 처리한다.
+   *
+   * ⚠️ 슬롯 PESSIMISTIC_WRITE 락 교착 방지:
+   *   applyInsert/applyUpdate 는 slotService.decrease/increase 로 슬롯 행 락을 잡는다.
+   *   한 청크가 여러 슬롯을 건드리면 동시 청크 트랜잭션들이 서로 다른 순서로 락을 잡아
+   *   deadlock 이 날 수 있다. 따라서 토큰을 slotId 오름차순으로 정렬해 "모든 배치
+   *   트랜잭션이 동일한 순서로 슬롯 락을 획득"하도록 보장한다.
+   *
+   * 멱등/안전:
+   *   - 토큰 dedup, findByReservationTokenIn 일괄 조회로 upsert (중복 INSERT 없음).
+   *   - 슬롯 차감/복구가 같은 트랜잭션에 묶이므로(REQUIRED 전파) 청크 실패 시 함께 롤백.
+   *   - 예외 발생 시 트랜잭션 전체 롤백 → 호출자(Worker)가 단건 폴백으로 재처리.
+   *
+   * ⚠️ Reservation.id 는 IDENTITY 라 Hibernate 신규 INSERT 배치는 동작하지 않는다(건별 실행).
+   *    핵심 이득은 "청크당 트랜잭션/커밋 1회"로 commit 오버헤드 감소. 다만 슬롯 락을 청크
+   *    동안 길게 쥐므로 hot 슬롯에서는 chunk-size 를 작게 두는 것이 안전하다.
+   */
+  @Transactional
+  public void syncBatch(List<String> tokens) {
+    List<String> distinct = new ArrayList<>(new LinkedHashSet<>(tokens));
+
+    // 토큰별 Redis 데이터 로드 (없으면 drop)
+    List<TokenItem> items = new ArrayList<>(distinct.size());
+    for (String token : distinct) {
+      ReservationTokenData data = reservationRedis.findByToken(token);
+      if (data == null) {
+        log.warn("Batch sync skipped — Redis hash missing. token={}", token);
+        continue;
+      }
+      items.add(new TokenItem(token, data));
+    }
+    if (items.isEmpty()) return;
+
+    // slotId 오름차순 — 슬롯 락 획득 순서 고정(교착 방지)
+    items.sort(Comparator.comparing(it -> it.data().slotId()));
+
+    Map<String, Reservation> existingByToken = reservationRepository
+        .findByReservationTokenIn(distinct).stream()
+        .collect(Collectors.toMap(Reservation::getReservationToken, Function.identity()));
+
+    for (TokenItem it : items) {
+      ReservationTokenData data = it.data();
+      LocalDateTime visitedAt = toLdtNullable(data.visitedAt());
+      LocalDateTime canceledAt = toLdtNullable(data.canceledAt());
+      LocalDateTime noShowAt = toLdtNullable(data.noShowAt());
+      LocalDateTime rejectedAt = toLdtNullable(data.rejectedAt());
+      RejectionReason rejectionReason = data.rejectionReason() == null ? null
+          : RejectionReason.valueOf(data.rejectionReason());
+
+      Reservation existing = existingByToken.get(it.token());
+      if (existing != null) {
+        applyUpdate(existing, data, visitedAt, canceledAt, noShowAt, rejectedAt, rejectionReason);
+      } else {
+        applyInsert(it.token(), data, visitedAt, canceledAt, noShowAt, rejectedAt, rejectionReason);
+      }
+      reservationMetrics.persistSucceeded(data.createdAt());
+    }
+    log.debug("Batch synced reservation. tokens={}, distinct={}, processed={}",
+        tokens.size(), distinct.size(), items.size());
+  }
+
+  /* slotId 정렬을 위한 (token, data) 묶음 */
+  private record TokenItem(String token, ReservationTokenData data) {}
 
   /* 신규 INSERT */
   private void applyInsert(String token, ReservationTokenData data,
