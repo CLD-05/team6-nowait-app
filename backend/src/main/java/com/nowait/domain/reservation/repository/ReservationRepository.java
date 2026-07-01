@@ -17,6 +17,9 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     // Worker / 조회: token 으로 기존 행 조회 (idempotent upsert 의 키)
     Optional<Reservation> findByReservationToken(String reservationToken);
 
+    // Worker(멱등성): UNIQUE 충돌/복구 시 해당 token 이 이미 DB 에 저장됐는지 확인
+    boolean existsByReservationToken(String reservationToken);
+
     // 취소/노쇼 내역 삭제용 — 본인 소유 확인
     @Query("SELECT r FROM Reservation r WHERE r.reservationToken = :token AND r.user.id = :userId")
     Optional<Reservation> findByTokenAndUserId(@Param("token") String token, @Param("userId") Long userId);

@@ -1,6 +1,7 @@
 package com.nowait.domain.reservation.worker;
 
 import com.nowait.domain.reservation.entity.Reservation;
+import com.nowait.domain.reservation.monitoring.ReservationMetrics;
 import com.nowait.domain.reservation.redis.ReservationRedisLuaExecutor;
 import com.nowait.domain.reservation.redis.ReservationTokenData;
 import com.nowait.domain.reservation.repository.ReservationRepository;
@@ -49,6 +50,17 @@ public class ReservationSyncHandler {
   private final SlotRepository slotRepository;
   private final SlotService slotService;
   private final ReservationRedisLuaExecutor reservationRedis;
+  private final ReservationMetrics reservationMetrics;
+
+  /*
+   * Worker 멱등성: 해당 reservationToken 이 이미 DB 에 저장됐는지 확인한다.
+   * UNIQUE 충돌(동시 처리) 또는 재기동 복구 시 "이미 처리됨"을 판정하는 데 사용한다.
+   * 독립적인 readOnly 트랜잭션 — 롤백된 저장 트랜잭션과 무관하게 재조회한다.
+   */
+  @Transactional(readOnly = true)
+  public boolean existsByReservationToken(String token) {
+    return reservationRepository.existsByReservationToken(token);
+  }
 
   /*
    * @return true = 정상 처리 (재시도 X), false = 일시적 오류 (재시도 대상)
@@ -75,6 +87,7 @@ public class ReservationSyncHandler {
         () -> applyInsert(token, data, visitedAt, canceledAt, noShowAt, rejectedAt, rejectionReason)
     );
 
+    reservationMetrics.persistSucceeded(data.createdAt());
     log.debug("Synced. token={} status={}", token, data.status());
     return true;
   }
